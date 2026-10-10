@@ -5,18 +5,18 @@
   "defaultModel": "gpt-6-astra",
   "defaultThinkingLevel": "xhigh",
   "packages": [
-    "npm:pi-mcp-adapter",
     "npm:pi-web-access",
     "npm:pi-matt-pocock-skills",
     {
       "source": "npm:bigpowers",
       "extensions": []
-    },
-    "npm:@dietrichgebert/ponytail"
+    }
   ],
   "hideThinkingBlock": true,
   "showCacheMissNotices": true,
   "defaultProjectTrust": "ask",
   "enableInstallTelemetry": false,
+  "defaultTools": ["+codemode"],
+  "quietStartup": "header",
   "tuiMode": "regular"
 }
