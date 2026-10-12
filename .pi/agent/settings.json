@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "1.0.0",
+  "lastChangelogVersion": "1.1.0",
   "theme": "catppuccin-mocha",
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-6-astra",
@@ -16,7 +16,9 @@
   "showCacheMissNotices": true,
   "defaultProjectTrust": "ask",
   "enableInstallTelemetry": false,
-  "defaultTools": ["+codemode"],
+  "defaultTools": [
+    "+codemode"
+  ],
   "quietStartup": "header",
   "tuiMode": "regular"
 }
