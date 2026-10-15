@@ -9,8 +9,8 @@ obj.__index = obj
 -- Metadata
 obj.name = "CleanMode"
 obj.version = "1.0"
-obj.author = "MSmaili"
-obj.homepage = "https://github.com/MSmaili/dotfiles"
+obj.author = "MuhametSmaili"
+obj.homepage = "https://github.com/MuhametSmaili/dotfiles"
 obj.license = "MIT - https://opensource.org/licenses/MIT"
 
 -- Clean Mode: full-screen dark overlay that swallows keyboard input so you

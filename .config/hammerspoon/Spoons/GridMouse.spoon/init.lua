@@ -8,7 +8,7 @@
 --- space/enter to click (shift for right-click), `d` to double-click,
 --- esc/backspace to exit.
 ---
---- Download: https://github.com/MSmaili/dotfiles
+--- Download: https://github.com/MuhametSmaili/dotfiles
 
 local obj = {}
 obj.__index = obj
@@ -16,8 +16,8 @@ obj.__index = obj
 -- Metadata
 obj.name = "GridMouse"
 obj.version = "1.0"
-obj.author = "MSmaili"
-obj.homepage = "https://github.com/MSmaili/dotfiles"
+obj.author = "MuhametSmaili"
+obj.homepage = "https://github.com/MuhametSmaili/dotfiles"
 obj.license = "MIT - https://opensource.org/licenses/MIT"
 
 --- GridMouse.freeMove

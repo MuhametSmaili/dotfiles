@@ -8,7 +8,7 @@
 --- but only when the machine has actually been idle, so it never fights your
 --- own cursor movement.
 ---
---- Download: https://github.com/MSmaili/dotfiles
+--- Download: https://github.com/MuhametSmaili/dotfiles
 
 local obj = {}
 obj.__index = obj
@@ -16,8 +16,8 @@ obj.__index = obj
 -- Metadata
 obj.name = "Awake"
 obj.version = "1.0"
-obj.author = "MSmaili"
-obj.homepage = "https://github.com/MSmaili/dotfiles"
+obj.author = "MuhametSmaili"
+obj.homepage = "https://github.com/MuhametSmaili/dotfiles"
 obj.license = "MIT - https://opensource.org/licenses/MIT"
 
 --- Awake.jiggleDistance

@@ -11,7 +11,7 @@ yazi = "latest"
 "cargo:tree-sitter-cli" = "latest"
 
 # Go CLI tools
-"go:github.com/MSmaili/hetki" = "main"
+"go:github.com/MuhametSmaili/hetki" = "main"
 "go:github.com/go-task/task/v3/cmd/task" = "latest"
 
 # Runtimes

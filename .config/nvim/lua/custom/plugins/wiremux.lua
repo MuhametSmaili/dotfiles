@@ -1,5 +1,5 @@
 return {
-	"MSmaili/wiremux.nvim",
+	"MuhametSmaili/wiremux.nvim",
 	lazy = false,
 	---@wiremux.config.UserOptions
 	opts = {

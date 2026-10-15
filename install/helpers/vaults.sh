@@ -5,7 +5,7 @@ HELPERS_DIR="${HELPERS_DIR:-$(cd "$(dirname "$0")" && pwd)}"
 source "$HELPERS_DIR/utils.sh"
 
 VAULTS_REPO_DIR="${VAULTS_REPO_DIR:-$HOME/.vaults}"
-VAULTS_REPO_URL="${VAULTS_REPO_URL:-git@github.com:msmaili/.vaults.git}"
+VAULTS_REPO_URL="${VAULTS_REPO_URL:-git@github.com:MuhametSmaili/.vaults.git}"
 
 ensure_vault_repo() {
     echo "📚 Setting up vault repository..."

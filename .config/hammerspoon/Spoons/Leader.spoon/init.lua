@@ -19,7 +19,7 @@
 --- }, 2.5)
 --- ```
 ---
---- Download: https://github.com/MSmaili/dotfiles
+--- Download: https://github.com/MuhametSmaili/dotfiles
 
 local obj = {}
 obj.__index = obj
@@ -27,8 +27,8 @@ obj.__index = obj
 -- Metadata
 obj.name = "Leader"
 obj.version = "1.0"
-obj.author = "MSmaili"
-obj.homepage = "https://github.com/MSmaili/dotfiles"
+obj.author = "MuhametSmaili"
+obj.homepage = "https://github.com/MuhametSmaili/dotfiles"
 obj.license = "MIT - https://opensource.org/licenses/MIT"
 
 -- Style ----------------------------------------------------------------------

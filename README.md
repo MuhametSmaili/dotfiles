@@ -11,7 +11,7 @@ This is a personal configuration. If you do not like a part of it, change that p
 Read the script before you run it.
 
 ```bash
-git clone https://github.com/MSmaili/dotfiles ~/dotfiles
+git clone https://github.com/MuhametSmaili/dotfiles ~/dotfiles
 cd ~/dotfiles
 ./install.sh
 ```
@@ -100,7 +100,7 @@ The prefix is `Ctrl-a`.
 The Brewfile and the mise configuration do not provide hetki. Install it with Go:
 
 ```bash
-go install github.com/MSmaili/hetki@latest
+go install github.com/MuhametSmaili/hetki@latest
 ```
 
 hetki starts and switches the tmux sessions. The `prefix + o` key binding opens
