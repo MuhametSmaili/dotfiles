@@ -3,6 +3,8 @@
 .ssh/config.work
 .ssh/config.work.*
 .ssh/config.local
+.ssh/config.local.*
+.ssh/*.pub
 .ssh/id_*
 .ssh/*.pem
 .ssh/known_hosts*
