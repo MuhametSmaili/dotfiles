@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test": "node --experimental-strip-types --test resource-picker/test/*.test.ts usage/test/*.test.ts",
+    "test": "node --experimental-transform-types --test leader/test/*.test.ts resource-picker/test/*.test.ts usage/test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "check": "npm run test && npm run typecheck"
   },

@@ -1,7 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CustomEditor, getAgentDir, type ExtensionAPI, type ExtensionContext, type KeybindingsManager, type Theme } from "@earendil-works/pi-coding-agent";
-import { Key, matchesKey, parseKey, type KeyId, type TUI } from "@earendil-works/pi-tui";
+import { isKeyRelease, isKeyRepeat, Key, matchesKey, parseKey, type KeyId, type TUI } from "@earendil-works/pi-tui";
+
+const INTERRUPT_WINDOW_MS = 600;
 
 interface LeaderConfig {
 	leader?: unknown;
@@ -68,6 +70,8 @@ export default function leaderExtension(pi: ExtensionAPI): void {
 				config,
 				dispatch,
 				(pending) => setHints(activeEditor!, pending, ctx.ui.theme),
+				() => !ctx.isIdle(),
+				(pending) => ctx.ui.setStatus("double-escape", pending ? "Press Esc again to abort" : undefined),
 			);
 			return activeEditor;
 		});
@@ -91,6 +95,9 @@ export default function leaderExtension(pi: ExtensionAPI): void {
 		if (ctx.mode === "tui") installEditor(ctx);
 	});
 
+	pi.on("agent_start", () => activeEditor?.resetInterrupt());
+	pi.on("agent_end", () => activeEditor?.resetInterrupt());
+
 	pi.on("session_shutdown", () => {
 		activeEditor?.dispose();
 		activeEditor = undefined;
@@ -103,19 +110,31 @@ export default function leaderExtension(pi: ExtensionAPI): void {
 class LeaderEditor extends CustomEditor {
 	private pending = false;
 	private timeout: ReturnType<typeof setTimeout> | undefined;
+	private interruptTimeout: ReturnType<typeof setTimeout> | undefined;
+	private lastEscapeTime: number | undefined;
 
 	constructor(
 		tui: TUI,
 		theme: ConstructorParameters<typeof CustomEditor>[1],
-		keybindings: KeybindingsManager,
+		private readonly appKeybindings: KeybindingsManager,
 		private readonly config: { leader: KeyId; timeoutMs: number; bindings: LeaderBindings },
 		private readonly dispatch: (command: string) => void,
 		private readonly onPendingChange: (pending: boolean) => void,
+		private readonly isBusy: () => boolean,
+		private readonly onInterruptPendingChange: (pending: boolean) => void,
 	) {
-		super(tui, theme, keybindings);
+		super(tui, theme, appKeybindings);
 	}
 
 	override handleInput(data: string): void {
+		// Kitty releases/repeats must not count as a second physical Esc press.
+		if (isKeyRelease(data)) return;
+		const escape = matchesKey(data, Key.escape);
+		if (escape && isKeyRepeat(data)) return;
+
+		const guardInterrupt = escape && this.appKeybindings.matches(data, "app.interrupt")
+			&& this.isBusy() && !this.pending && !this.isShowingAutocomplete();
+		if (!guardInterrupt) this.resetInterrupt();
 		if (!this.pending && matchesKey(data, Key.ctrl("l"))) {
 			this.setText("");
 			this.tui.requestRender(true);
@@ -140,6 +159,21 @@ class LeaderEditor extends CustomEditor {
 			return;
 		}
 
+		if (guardInterrupt) {
+			const now = Date.now();
+			const confirmed = this.lastEscapeTime !== undefined && now - this.lastEscapeTime < INTERRUPT_WINDOW_MS;
+			this.resetInterrupt();
+			if (!confirmed) {
+				this.lastEscapeTime = now;
+				this.onInterruptPendingChange(true);
+				this.interruptTimeout = setTimeout(() => this.resetInterrupt(), INTERRUPT_WINDOW_MS);
+				this.interruptTimeout.unref?.();
+				return;
+			}
+		}
+
+		// Keep Pi's dynamic abort handler, including queued-message restoration,
+		// compaction/retry cancellation, and the native idle double-Esc action.
 		super.handleInput(data);
 	}
 
@@ -152,8 +186,17 @@ class LeaderEditor extends CustomEditor {
 		return true;
 	}
 
+	resetInterrupt(): void {
+		if (this.interruptTimeout) clearTimeout(this.interruptTimeout);
+		this.interruptTimeout = undefined;
+		if (this.lastEscapeTime === undefined) return;
+		this.lastEscapeTime = undefined;
+		this.onInterruptPendingChange(false);
+	}
+
 	dispose(): void {
 		this.clearPending();
+		this.resetInterrupt();
 	}
 
 	private enterPending(): void {
