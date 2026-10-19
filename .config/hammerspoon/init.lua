@@ -59,12 +59,13 @@ spoon.Leader.create(meh, "space", {
 	s = {
 		label = "Screenshot",
 		group = {
-			a = {
-				label = "Area",
-				action = function()
-					hs.eventtap.keyStroke({ "ctrl", "cmd", "shift" }, "4", 0)
-				end,
-			},
+			a = { label = "Area(shottr)", action = spoon.Leader.open("shottr://grab/area") },
+			-- A = {
+			-- 	label = "Area",
+			-- 	action = function()
+			-- 		hs.eventtap.keyStroke({ "ctrl", "cmd", "shift" }, "4", 0)
+			-- 	end,
+			-- },
 			o = { label = "OCR", action = spoon.Leader.open("shottr://ocr") },
 			w = { label = "Window", action = spoon.Leader.open("shottr://grab/window") },
 			f = { label = "Fullscreen", action = spoon.Leader.open("shottr://grab/fullscreen") },
@@ -104,24 +105,6 @@ spoon.Leader.create(meh, "space", {
 			r = { label = "Refresh now", action = Bing.refresh },
 			p = { label = "Pick region", action = Bing.pickRegion },
 			o = { label = "Open folder", action = spoon.Leader.open(os.getenv("HOME") .. "/Pictures/BingWallpapers") },
-		},
-	},
-	w = {
-		label = "Window (Aerospace)",
-		group = {
-			h = {
-				label = "Join left",
-				action = spoon.Leader.task("/opt/homebrew/bin/aerospace", { "join-with", "left" }),
-			},
-			j = {
-				label = "Join down",
-				action = spoon.Leader.task("/opt/homebrew/bin/aerospace", { "join-with", "down" }),
-			},
-			k = { label = "Join up", action = spoon.Leader.task("/opt/homebrew/bin/aerospace", { "join-with", "up" }) },
-			l = {
-				label = "Join right",
-				action = spoon.Leader.task("/opt/homebrew/bin/aerospace", { "join-with", "right" }),
-			},
 		},
 	},
 	t = {
