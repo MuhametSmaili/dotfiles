@@ -1,7 +1,8 @@
 {
   "$schema": "https://opencode.ai/v2/cli.json",
   "theme": {
-    "name": "catppuccin-macchiato"
+    "name": "system",
+    "mode": "system"
   },
   "tabs": {
     "mode": "off",
@@ -28,7 +29,8 @@
   "session": {
     "sidebar": "hide",
     "thinking": "show",
-    "permissions": "autoaccept"
+    "permissions": "autoaccept",
+    "image_preview": true
   },
   "attention": {
     "notifications": true,

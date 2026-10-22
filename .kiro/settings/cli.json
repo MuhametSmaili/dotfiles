@@ -20,5 +20,15 @@
   "chat.uiMode": "compact",
   "mcp.loadedBefore": true,
   "telemetry.enabled": false,
-  "toolSearch.enabled": true
+  "toolSearch.enabled": true,
+  "chat.modelDefaults": {
+    "claude-opus-5": {
+      "thinking": {
+        "type": "adaptive"
+      },
+      "output_config": {
+        "effort": "high"
+      }
+    }
+  }
 }

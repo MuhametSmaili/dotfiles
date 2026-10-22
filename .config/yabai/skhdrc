@@ -47,15 +47,15 @@ shift + alt - o : yabai -m window --display prev; yabai -m display --focus prev
 # macOS 27 workaround: configure native Alt+1–8 manually in System Settings >
 # Keyboard > Keyboard Shortcuts > Mission Control (not configured by the installer).
 # Remove the native bindings before re-enabling these to avoid conflicts.
-# alt - 1 : yabai -m space --focus 1
-# alt - 2 : yabai -m space --focus 2
-# alt - 3 : yabai -m space --focus 3
-# alt - 4 : yabai -m space --focus 4
-# alt - 5 : yabai -m space --focus 5
-# alt - 6 : yabai -m space --focus 6
-# alt - 7 : yabai -m space --focus 7
-# alt - 8 : yabai -m space --focus 8
-# alt - 9 : yabai -m space --focus 9
+alt - 1 : yabai -m space --focus 1
+alt - 2 : yabai -m space --focus 2
+alt - 3 : yabai -m space --focus 3
+alt - 4 : yabai -m space --focus 4
+alt - 5 : yabai -m space --focus 5
+alt - 6 : yabai -m space --focus 6
+alt - 7 : yabai -m space --focus 7
+alt - 8 : yabai -m space --focus 8
+alt - 9 : yabai -m space --focus 9
 
 # ------------------------- Spaces: move window + follow ----------------------
 shift + ctrl - left  : yabai -m window --space prev; yabai -m space --focus prev

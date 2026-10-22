@@ -54,6 +54,8 @@ WORDCHARS="${WORDCHARS//[\/=\-]/}"
 
 # Basic environment
 export EDITOR=nvim
+export PAGER='bat -p'
+export MANPAGER="sh -c 'col -bx | bat -l man -p'"
 # export TERM=xterm-256color
 
 export XDG_CONFIG_HOME="$HOME/.config"

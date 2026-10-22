@@ -1,11 +1,13 @@
 # =============================================================================
 # Appearance
 # =============================================================================
-theme                  = light:Catppuccin Latte,dark:Catppuccin Mocha
-background-opacity     = 0.90
-background-blur        = 30
-background-blur-radius = 30
+theme                  = light:Catppuccin Latte,dark:Merino Dark
+background-opacity     = 0.5
+background-blur = macos-glass-regular
+macos-titlebar-style = transparent
 alpha-blending         = linear-corrected
+palette-generate       = true
+palette-harmonious     = true
 progress-style         = true
 
 # Optional extras (uncomment to enable)
@@ -18,8 +20,18 @@ progress-style         = true
 font-family    = "MonoLisaCode Variable"
 font-size      = 18
 font-variation = wght=430
-font-variation = GRAD=20
-font-feature   = calt, liga, zero, dlig, cv01, cv02, cv04, cv07, cv08, ss01, ss11, ss14
+# GRAD=-30 thinned strokes; Rex doesn't apply it, so it's off to match
+#font-variation = GRAD=-30
+# Core typography
+font-feature   = calt, liga
+# Character differentiation
+font-feature   = zero, ss14
+# Coding-specific character variants
+font-feature   = ss13
+# Stylistic choices
+font-feature   = ss01, ss11
+# Curated coding ligatures
+font-feature   = cv02, cv04, cv05, cv07, cv08, cv09
 
 # =============================================================================
 # Cursor
@@ -27,8 +39,6 @@ font-feature   = calt, liga, zero, dlig, cv01, cv02, cv04, cv07, cv08, ss01, ss1
 cursor-style        = block
 cursor-style-blink  = false
 cursor-invert-fg-bg = false
-cursor-color        = "#a6adc8"
-cursor-text         = "#1e1e2e"
 
 # =============================================================================
 # Window
