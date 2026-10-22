@@ -1,7 +1,7 @@
 {
   "app.beta": false,
   "app.hideMenubarIcon": true,
-  "autocomplete.disable": false,
+  "autocomplete.disable": true,
   "autocomplete.fontFamily": "MonoLisaCode Variable",
   "autocomplete.theme": "monokai-dark",
   "chat.defaultAgent": "default",
@@ -17,12 +17,14 @@
   "chat.enableTangentMode": true,
   "chat.enableThinking": true,
   "chat.enableTodoList": true,
+  "chat.fullscreenWheelRows": 1,
+  "chat.startFullscreen": true,
   "chat.uiMode": "compact",
   "mcp.loadedBefore": true,
   "telemetry.enabled": false,
   "toolSearch.enabled": true,
   "chat.modelDefaults": {
-    "claude-opus-5": {
+    "claude-opus-5.5": {
       "thinking": {
         "type": "adaptive"
       },
