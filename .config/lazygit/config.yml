@@ -1,7 +1,19 @@
 git:
+  # Press | to switch layouts without leaving LazyGit.
   diffRenderers:
-    - command: delta --dark --paging=never
+    - name: Side-by-side
+      command: delta --dark --paging=never --side-by-side
+      colorArg: always
+    - name: Unified
+      command: env GIT_CONFIG_PARAMETERS="'delta.side-by-side=false'" delta --dark --paging=never
       colorArg: always
   overrideGpg: true
 gui:
   showCommandLog: false
+  screenMode: half
+customCommands:
+  - key: 'O'
+    context: 'files'
+    description: 'Review changes in CodeDiff'
+    command: 'nvim -c "CodeDiff --exit-on-close"'
+    output: terminal

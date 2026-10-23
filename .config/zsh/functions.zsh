@@ -20,6 +20,11 @@ lg() {
     command lazygit "$@"
 }
 
+# CodeDiff review with the normal Neovim config; arguments go to Neovim.
+cdf() {
+    command nvim -c 'CodeDiff --exit-on-close' "$@"
+}
+
 # Git diff with fzf preview
 gdiff() {
     local args="$*"

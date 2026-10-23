@@ -15,12 +15,17 @@
 
 .config/gh/hosts.yml
 
-# Override global gitignore — track .kiro/ in dotfiles
+# Override global gitignore for tracked agent configuration directories
 !.kiro/
 !.claude/
 !.pi/
 
-# Kiro CLI runtime files (still ignore these)
-.kiro/.cli_bash_history
-.kiro/prompts
-.kiro/settings/lsp.json
+# Kiro: track only agent definitions and explicit portable settings
+/.kiro/*
+!/.kiro/agents/
+!/.kiro/settings/
+/.kiro/agents/*
+!/.kiro/agents/*.json
+/.kiro/settings/*
+!/.kiro/settings/cli.json
+!/.kiro/settings/mcp.json

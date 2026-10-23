@@ -8,7 +8,7 @@ return {
 	opts = {
 		explorer = {
 			position = "left",
-			hidden = true,
+			-- hidden = true,
 			view_mode = "tree",
 			width = 30,
 		},

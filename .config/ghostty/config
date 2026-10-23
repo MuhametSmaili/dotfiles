@@ -104,4 +104,4 @@ quick-terminal-space-behavior     = move
 keybind = cmd+p=text:\x01o
 
 # Toggle the quick terminal from anywhere on macOS
-keybind = global:ctrl+alt+shift+t=toggle_quick_terminal
+# keybind = global:ctrl+alt+shift+t=toggle_quick_terminal

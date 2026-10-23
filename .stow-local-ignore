@@ -29,6 +29,11 @@ node_modules
 
 ^/\.ssh/1Password$
 
+# Kiro: link only agent JSON and the two portable settings files
+^/\.kiro/(?!agents$|settings$)[^/]+$
+^/\.kiro/agents/(?![^/]+\.json$)[^/]+$
+^/\.kiro/settings/(?!cli\.json$|mcp\.json$)[^/]+$
+
 # Dotfiles installation files
 ^/install$
 ^/install\.sh$
