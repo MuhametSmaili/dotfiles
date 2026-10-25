@@ -1,0 +1,7 @@
+ui:
+  view: flat
+  scope: tracked
+  preview: false
+  preview_width: 70
+  height: "100%"
+  border: rounded
