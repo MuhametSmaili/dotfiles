@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  printf '%s\n' \
+    'Usage: mdp [FILE|DIR] [--port PORT] [--no-open] [--no-reload] [--dark]' \
+    '' \
+    'Preview trusted Markdown with GitHub-style formatting, Mermaid, and live reload.' \
+    'With no path, open the README in the current directory.' \
+    'The server listens on 127.0.0.1. Press Ctrl+C to stop it.' \
+    '' \
+    '  -p, --port PORT  Use this port instead of the next free port from 8642' \
+    '  --no-open       Print the server URL without opening a browser' \
+    '  --no-reload     Disable live reload and directory watchers' \
+    '                  Port 65535 requires this option' \
+    '  --dark          Use the dark theme instead of the light theme' \
+    '  -h, --help      Show this help' \
+    '' \
+    'Requires Node.js and either bunx or npx. The first run downloads Markserv.'
+}
+
+fail() { printf 'mdp: %s\n' "$*" >&2; exit 1; }
+
+TARGET='.'
+HAS_TARGET=false
+DARK=false
+RELOAD=true
+PORT=''
+ARGS=(--address 127.0.0.1)
+
+while (( $# )); do
+  case "$1" in
+    -h|--help) usage; exit 0 ;;
+    -p|--port)
+      [[ "${2:-}" =~ ^[0-9]{1,5}$ ]] || fail 'port must be an integer from 1 to 65535'
+      PORT=$((10#$2))
+      (( PORT >= 1 && PORT <= 65535 )) || fail 'port must be an integer from 1 to 65535'
+      ARGS+=(--port "$PORT")
+      shift 2
+      ;;
+    --no-open) ARGS+=(--no-browser); shift ;;
+    --no-reload) RELOAD=false; ARGS+=(--no-hotreload); shift ;;
+    --dark) DARK=true; shift ;;
+    --) shift; (( $# == 1 )) || fail 'expected one path after --'
+      $HAS_TARGET && fail 'provide only one file or directory'
+      TARGET=$1; HAS_TARGET=true; shift
+      ;;
+    -*) fail "unknown option: $1 (see mdp --help)" ;;
+    *)
+      $HAS_TARGET && fail 'provide only one file or directory'
+      TARGET=$1; HAS_TARGET=true; shift
+      ;;
+  esac
+done
+
+# Markserv initially allocates the live-reload port immediately above HTTP.
+if $RELOAD && [[ "$PORT" == 65535 ]]; then
+  fail 'port 65535 requires --no-reload (live reload needs another port)'
+fi
+
+if [[ -d "$TARGET" ]]; then
+  DIR=$TARGET
+  TARGET=''
+  for NAME in README.md readme.md README.MD Readme.md; do
+    if [[ -f "$DIR/$NAME" ]]; then TARGET="$DIR/$NAME"; break; fi
+  done
+  [[ -n "$TARGET" ]] || fail "no README.md in: $DIR"
+fi
+[[ -f "$TARGET" && -r "$TARGET" ]] || fail "cannot read file: $TARGET"
+# Absolute paths prevent option-like filenames from becoming CLI flags.
+[[ "$TARGET" == /* ]] || TARGET="$PWD/$TARGET"
+$DARK || ARGS+=(--light)
+
+command -v node >/dev/null 2>&1 || fail 'Node.js is required to run Markserv'
+printf 'Previewing %s\nPress Ctrl+C to stop the local server.\n' "$TARGET"
+# Pin the CLI; each runner caches it outside the document directory.
+if command -v bunx >/dev/null 2>&1; then
+  exec bunx markserv@1.21.1 "$TARGET" "${ARGS[@]}"
+elif command -v npx >/dev/null 2>&1; then
+  exec npx --yes --package=markserv@1.21.1 markserv "$TARGET" "${ARGS[@]}"
+else
+  fail 'install Bun (bunx) or npm (npx) to run Markserv'
+fi
