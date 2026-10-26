@@ -12,6 +12,22 @@ shift + alt - j : /opt/homebrew/bin/mimi tiling cmd swap down
 shift + alt - k : /opt/homebrew/bin/mimi tiling cmd swap up
 shift + alt - l : /opt/homebrew/bin/mimi tiling cmd swap right
 
+# Reach a floating window. alt+HJKL asks the layout, which only knows tiled
+# windows, so a float is neither reachable nor escapable with those. These go
+# straight to mimi, which sees every window on the Space by position. Focusing
+# also raises, so a buried float comes to the front.
+ctrl + alt - h : /opt/homebrew/bin/mimi action focus_window --left
+ctrl + alt - j : /opt/homebrew/bin/mimi action focus_window --down
+ctrl + alt - k : /opt/homebrew/bin/mimi action focus_window --up
+ctrl + alt - l : /opt/homebrew/bin/mimi action focus_window --right
+
+# Cycle every window on the Space, floats included. mimi's directional focus
+# needs a strictly nearer centre, so it cannot reach a centred float over one
+# tiled window, or any window in alt+S stack mode: those all share a centre.
+# Cycling sorts by position instead and steps through them.
+ctrl + alt - n : /opt/homebrew/bin/mimi action focus_window
+ctrl + alt - p : /opt/homebrew/bin/mimi action focus_window --backward
+
 # Layout: BSP or fully overlapping stack, like yabai.
 alt - b : /opt/homebrew/bin/mimi tiling cmd layout bsp
 alt - s : /opt/homebrew/bin/mimi tiling cmd layout stack
