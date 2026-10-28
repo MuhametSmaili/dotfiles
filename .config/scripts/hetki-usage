@@ -11,6 +11,17 @@
 # Data: one CSV per day in ${XDG_STATE_HOME:-~/.local/state}/hetki/usage/.
 # It observes the tmux server selected by your environment, like
 # `hetki service status`. It only reads; it never starts or stops anything.
+#
+# Memory: RSS includes clean, reclaimable code pages of the binary. "Private"
+# is macOS phys_footprint (what Activity Monitor shows) or Linux RssAnon.
+# The macOS peak is the process's own high-water mark, so it catches spikes
+# between samples. CPU rates skip intervals longer than 3x the sampling
+# interval, so sleep and suspended sampling do not dilute them.
+# CPU includes separate own-process and exited/reaped-child counters. Combined
+# CPU excludes still-running children until they exit and are reaped. It is not
+# inventory-only: screen-capture clients also count. macOS needs Python 3 for
+# native CPU counters; missing readings stay blank, never zero. Memory remains
+# per-process; temporary child memory peaks are not measured.
 
 set -u
 
@@ -18,29 +29,125 @@ state_home="${XDG_STATE_HOME:-$HOME/.local/state}"
 data_dir="$state_home/hetki/usage"
 pid_file="$data_dir/sampler.pid"
 frecency_file="$state_home/hetki/frecency.json"
-header="time,daemon_pid,instance,daemon_rss_kib,daemon_cpu_s,daemon_cpu_pct,tmux_pid,tmux_rss_kib,tmux_cpu_s,sessions,panes,pickers_open,navigations"
+default_interval=60
+os=$(uname -s)
+clock_ticks=$(getconf CLK_TCK 2>/dev/null || echo 100)
+header="time,interval_s,daemon_pid,instance,daemon_rss_kib,daemon_private_kib,daemon_peak_kib,daemon_cpu_s,daemon_cpu_pct,tmux_pid,tmux_rss_kib,tmux_private_kib,tmux_cpu_s,sessions,panes,pickers_open,picker_rss_kib,navigations"
+header+=",daemon_children_cpu_s,daemon_combined_cpu_s,daemon_cpu_start"
 
+# Prints the value of one "Label: value" line from `hetki service status`.
+status_field() {
+	printf '%s\n' "$1" | awk -F': ' -v key="$2" '$1 == key { print $2; exit }'
+}
+
+# Prints "rss_kib cpu_seconds" for pid from `ps -o pid=,rss=,time=` output.
 # ps prints cumulative CPU as [[D-]HH:]MM:SS[.ss]; convert it to seconds.
-cpu_seconds() {
-	ps -o time= -p "$1" 2>/dev/null | awk '{
-		t = $1; days = 0
+process_usage() {
+	[ -n "$2" ] || return 0
+	printf '%s\n' "$1" | awk -v pid="$2" '$1 == pid {
+		t = $3; days = 0
 		if (index(t, "-")) { split(t, d, "-"); days = d[1]; t = d[2] }
 		n = split(t, p, ":"); s = 0
 		for (i = 1; i <= n; i++) s = s * 60 + p[i]
-		printf "%.2f", s + days * 86400
+		printf "%s %.2f", $2, s + days * 86400
 	}'
 }
 
-rss_kib() {
-	ps -o rss= -p "$1" 2>/dev/null | tr -d ' '
+# Prints own CPU seconds, waited-child CPU seconds, and a process-birth token.
+# Fields follow the last ")" because Linux command names may contain parentheses.
+proc_cpu_times() {
+	local stat
+	[ -n "$1" ] && stat=$(cat "/proc/$1/stat" 2>/dev/null) || return 1
+	printf '%s\n' "${stat##*) }" | awk -v hz="$clock_ticks" '
+		NF >= 20 { printf "%.6f %.6f %s\n", ($12 + $13) / hz, ($14 + $15) / hz, $20 }'
+}
+
+# Read cumulative child CPU even when clients start and exit between samples.
+# These native CPU values use Mach ticks, not nanoseconds, on Apple Silicon.
+darwin_cpu_times() {
+	[ -n "$1" ] || return 1
+	python3 - "$1" <<'PY'
+import ctypes
+import sys
+
+
+# rusage_info_v1 from <sys/resource.h>; keep the fixed-width native layout.
+class Usage(ctypes.Structure):
+    _fields_ = [("uuid", ctypes.c_uint8 * 16)] + [
+        (name, ctypes.c_uint64) for name in (
+            "user_time", "system_time", "pkg_idle_wkups", "interrupt_wkups",
+            "pageins", "wired_size", "resident_size", "phys_footprint",
+            "proc_start_abstime", "proc_exit_abstime", "child_user_time",
+            "child_system_time", "child_pkg_idle_wkups", "child_interrupt_wkups",
+            "child_pageins", "child_elapsed_abstime",
+        )
+    ]
+
+
+class Timebase(ctypes.Structure):
+    _fields_ = [("numer", ctypes.c_uint32), ("denom", ctypes.c_uint32)]
+
+
+try:
+    library = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+    library.proc_pid_rusage.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_void_p]
+    library.proc_pid_rusage.restype = ctypes.c_int
+    system = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+    system.mach_timebase_info.argtypes = [ctypes.POINTER(Timebase)]
+    system.mach_timebase_info.restype = ctypes.c_int
+    base = Timebase()
+    if system.mach_timebase_info(ctypes.byref(base)) != 0 or not base.denom:
+        raise RuntimeError("cannot read Mach timebase")
+    usage = Usage()
+    if library.proc_pid_rusage(int(sys.argv[1]), 1, ctypes.byref(usage)) != 0:
+        raise OSError(ctypes.get_errno(), "proc_pid_rusage")
+    scale = base.numer / base.denom / 1e9
+    own = (usage.user_time + usage.system_time) * scale
+    children = (usage.child_user_time + usage.child_system_time) * scale
+    print(f"{own:.6f} {children:.6f} {usage.proc_start_abstime}")
+except (OSError, ValueError, RuntimeError) as error:
+    print(f"hetki-usage: native CPU unavailable: {error}", file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
+# Prints "private_kib [peak_kib]" or nothing when the platform has no source.
+private_memory() {
+	local pid="$1"
+	[ -n "$pid" ] || return 0
+
+	case "$os" in
+		Darwin)
+			footprint -f bytes --noCategories "$pid" 2>/dev/null | awk '
+				$1 == "phys_footprint:" { now = $2 }
+				$1 == "phys_footprint_peak:" { peak = $2 }
+				END { if (now != "") printf "%d %s", now / 1024, (peak != "" ? int(peak / 1024) : "") }'
+			;;
+		Linux)
+			[ -r "/proc/$pid/status" ] || return 0
+			awk '$1 == "RssAnon:" { print $2; exit }' "/proc/$pid/status"
+			;;
+	esac
+}
+
+# Prints "server_pid sessions panes" with a single tmux client invocation.
+tmux_facts() {
+	tmux -S "$1" display-message -p '#{pid}' \; list-panes -a -F '#{session_id}' 2>/dev/null | awk '
+		NR == 1 { pid = $0; next }
+		{ panes++; if (!seen[$0]++) sessions++ }
+		END { if (pid != "") printf "%s %d %d", pid, sessions, panes }'
 }
 
 # Picker processes are hetki invoked without a subcommand (flags allowed).
-pickers_open() {
-	ps -A -o args= 2>/dev/null | awk '{
-		n = split($1, path, "/")
-		if (path[n] == "hetki" && ($2 == "" || substr($2, 1, 1) == "-")) count++
-	} END { print count + 0 }'
+# Prints "count [max_rss_kib]".
+pickers() {
+	ps -A -o rss=,args= 2>/dev/null | awk '{
+		n = split($2, path, "/")
+		if (path[n] == "hetki" && ($3 == "" || substr($3, 1, 1) == "-")) {
+			count++
+			if ($1 + 0 > max) max = $1 + 0
+		}
+	} END { printf "%d %s", count, (count ? max : "") }'
 }
 
 # Each successful picker navigation adds 1 to a frecency rank, so the rank
@@ -54,56 +161,112 @@ day_file() {
 	echo "$data_dir/$(date +%Y-%m-%d).csv"
 }
 
-# Prints one CSV row; reads the previous row to compute the CPU percentage.
+# The newest data file, which is yesterday's just after midnight.
+latest_file() {
+	local files=("$data_dir"/*.csv)
+	[ -e "${files[0]}" ] && echo "${files[${#files[@]} - 1]}"
+}
+
+# Daemon CPU percentage since the previous sample of the same process, unless
+# the gap is too long to be continuous sampling. Columns are read by name.
+cpu_percent() {
+	local file="$1" now="$2" pid="$3" cpu="$4" interval="$5" instance="$6" birth="$7"
+	[ -n "$cpu" ] && [ -n "$file" ] && [ -s "$file" ] || return 0
+
+	{ head -n 1 "$file"; tail -n 1 "$file"; } | awk -F, -v now="$now" -v pid="$pid" -v cpu="$cpu" -v step="$interval" -v instance="$instance" -v birth="$birth" '
+		{ sub(/\r$/, "") }
+		NR == 1 { for (i = 1; i <= NF; i++) col[$i] = i; next }
+		$1 == "time" { exit }
+		{
+			t = $col["time"]; p = $col["daemon_pid"]; c = $col["daemon_cpu_s"]
+			b = ("daemon_cpu_start" in col) ? $col["daemon_cpu_start"] : ""
+			if (p == pid && $col["instance"] == instance && b == birth && c != "" && cpu >= c && now > t && now - t <= 3 * step)
+				printf "%.2f", (cpu - c) * 100 / (now - t)
+		}'
+}
+
+# Prints one CSV row.
 sample() {
-	local now status daemon instance socket rss cpu pct=""
-	local tmux_pid="" tmux_rss="" tmux_cpu="" sessions="" panes=""
+	local interval="${1:-$default_interval}"
+	local now status daemon instance socket
 	now=$(date +%s)
 	status=$(hetki service status 2>/dev/null)
-	daemon=$(printf '%s\n' "$status" | awk -F': ' '/^Daemon PID:/ { print $2 }')
-	instance=$(printf '%s\n' "$status" | awk -F': ' '/^Instance:/ { print $2 }')
-	socket=$(printf '%s\n' "$status" | awk -F': ' '/^Tmux socket:/ { print $2 }')
+	daemon=$(status_field "$status" 'Daemon PID')
+	instance=$(status_field "$status" 'Instance')
+	socket=$(status_field "$status" 'Tmux socket')
 
-	if [ -n "$daemon" ]; then
-		rss=$(rss_kib "$daemon")
-		cpu=$(cpu_seconds "$daemon")
-	else
-		rss="" cpu=""
-	fi
-
+	local tmux_pid="" sessions="" panes=""
 	if [ -n "$socket" ]; then
-		tmux_pid=$(tmux -S "$socket" display-message -p '#{pid}' 2>/dev/null)
-		sessions=$(tmux -S "$socket" list-sessions 2>/dev/null | wc -l | tr -d ' ')
-		panes=$(tmux -S "$socket" list-panes -a 2>/dev/null | wc -l | tr -d ' ')
-		if [ -n "$tmux_pid" ]; then
-			tmux_rss=$(rss_kib "$tmux_pid")
-			tmux_cpu=$(cpu_seconds "$tmux_pid")
-		fi
+		read -r tmux_pid sessions panes <<<"$(tmux_facts "$socket")"
 	fi
 
-	local file previous
-	file=$(day_file)
-	if [ -n "$cpu" ] && [ -s "$file" ]; then
-		previous=$(tail -n 1 "$file")
-		pct=$(printf '%s\n' "$previous" | awk -F, -v now="$now" -v pid="$daemon" -v cpu="$cpu" '
-			$2 == pid && now > $1 && $5 != "" { printf "%.2f", (cpu - $5) * 100 / (now - $1) }')
+	local usage="" daemon_rss="" daemon_cpu="" tmux_rss="" tmux_cpu=""
+	local pids="${daemon}${daemon:+${tmux_pid:+,}}${tmux_pid}"
+	if [ -n "$pids" ]; then
+		usage=$(ps -o pid=,rss=,time= -p "$pids" 2>/dev/null)
+		read -r daemon_rss daemon_cpu <<<"$(process_usage "$usage" "$daemon")"
+		read -r tmux_rss tmux_cpu <<<"$(process_usage "$usage" "$tmux_pid")"
+	fi
+	local native="" children_cpu="" combined_cpu="" cpu_start=""
+	case "$os" in
+		Darwin) native=$(darwin_cpu_times "$daemon") ;;
+		Linux)
+			native=$(proc_cpu_times "$daemon")
+			local tmux_native=""
+			read -r tmux_native _ <<<"$(proc_cpu_times "$tmux_pid")"
+			tmux_cpu=${tmux_native:-$tmux_cpu}
+			;;
+	esac
+	if [ -n "$native" ]; then
+		read -r daemon_cpu children_cpu cpu_start <<<"$native"
+		combined_cpu=$(awk -v own="$daemon_cpu" -v children="$children_cpu" 'BEGIN { printf "%.6f", own + children }')
 	fi
 
-	echo "$now,$daemon,$instance,$rss,$cpu,$pct,$tmux_pid,$tmux_rss,$tmux_cpu,$sessions,$panes,$(pickers_open),$(navigations)"
+	local daemon_private="" daemon_peak="" tmux_private=""
+	read -r daemon_private daemon_peak <<<"$(private_memory "$daemon")"
+	read -r tmux_private _ <<<"$(private_memory "$tmux_pid")"
+
+	local pct picker_count picker_rss
+	pct=$(cpu_percent "$(latest_file)" "$now" "$daemon" "$daemon_cpu" "$interval" "$instance" "$cpu_start")
+	read -r picker_count picker_rss <<<"$(pickers)"
+
+	echo "$now,$interval,$daemon,$instance,$daemon_rss,$daemon_private,$daemon_peak,$daemon_cpu,$pct,$tmux_pid,$tmux_rss,$tmux_private,$tmux_cpu,$sessions,$panes,$picker_count,$picker_rss,$(navigations),$children_cpu,$combined_cpu,$cpu_start"
+}
+
+# Creates the header, or rewrites a file from an older column layout by name.
+ensure_header() {
+	local file="$1" tmp
+	if [ ! -s "$file" ]; then
+		echo "$header" > "$file"
+		return
+	fi
+
+	[ "$(head -n 1 "$file")" = "$header" ] && return
+	tmp="$file.tmp.$$"
+	awk -F, -v header="$header" '
+		BEGIN { n = split(header, want, ",") }
+		{ sub(/\r$/, "") }
+		FNR == 1 { for (i = 1; i <= NF; i++) col[$i] = i; print header; next }
+		{
+			line = ""
+			for (i = 1; i <= n; i++) line = line (i > 1 ? "," : "") (want[i] in col ? $col[want[i]] : "")
+			print line
+		}' "$file" > "$tmp" && mv "$tmp" "$file"
 }
 
 record() {
-	local file
+	local interval="$1" file row
+	row=$(sample "$interval")
 	file=$(day_file)
-	[ -s "$file" ] || echo "$header" > "$file"
-	sample >> "$file"
+	ensure_header "$file"
+	echo "$row" >> "$file"
 }
 
 loop() {
 	local interval="$1"
 	trap 'rm -f "$pid_file"; exit 0' INT TERM
 	while :; do
-		record
+		record "$interval"
 		sleep "$interval" &
 		wait $!
 	done
@@ -117,14 +280,18 @@ running_pid() {
 }
 
 cmd_start() {
-	local interval="${1:-60}" pid
+	local interval="${1:-$default_interval}" pid
 	case "$interval" in
-		'' | *[!0-9]*) echo "interval must be a whole number of seconds" >&2; return 2 ;;
+		'' | *[!0-9]* | 0) echo "interval must be a positive whole number of seconds" >&2; return 2 ;;
 	esac
 	mkdir -p "$data_dir"
 	if pid=$(running_pid); then
 		echo "already sampling (pid $pid)"
 		return 0
+	fi
+	if [ "$os" = Darwin ] && ! command -v python3 >/dev/null 2>&1; then
+		echo "Python 3 is required for macOS child CPU measurements" >&2
+		return 1
 	fi
 	nohup "$0" __loop "$interval" </dev/null >/dev/null 2>&1 &
 	echo $! > "$pid_file"
@@ -153,49 +320,163 @@ cmd_status() {
 }
 
 cmd_summary() {
-	local which="${1:-$(date +%Y-%m-%d)}" files
-	if [ "$which" = all ]; then
-		files=$(ls "$data_dir"/*.csv 2>/dev/null)
-	else
-		files="$data_dir/$which.csv"
-	fi
-	[ -n "$files" ] && ls $files >/dev/null 2>&1 || { echo "no data for $which" >&2; return 1; }
+	local which="${1:-$(date +%Y-%m-%d)}" files=()
+	case "$which" in
+		all) files=("$data_dir"/*.csv) ;;
+		[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) files=("$data_dir/$which.csv") ;;
+		*) echo "expected YYYY-MM-DD or all" >&2; return 2 ;;
+	esac
+	[ -e "${files[0]}" ] || { echo "no data for $which" >&2; return 1; }
 
-	awk -F, '
-		FNR == 1 { next }
+	awk -F, -v default_step="$default_interval" '
+		function v(name) { return (name in col) ? $col[name] : "" }
+		function mib(kib) { return kib / 1024 }
+
+		# Per-instance least squares of one memory metric against time, after a
+		# 10-minute warm-up, to show slow growth rather than spikes. Series are
+		# keyed by metric so a mid-instance switch from RSS to private never mixes.
+		function trend(id, metric, t, kib,   k, x) {
+			k = id SUBSEP metric
+			if (!(k in born)) born[k] = t
+			if (t - born[k] < 600) return
+			x = (t - born[k]) / 86400
+			tn[k]++; tx[k] += x; ty[k] += kib; txy[k] += x * kib; txx[k] += x * x
+			if (!(k in tfirst)) tfirst[k] = t
+			tlast[k] = t
+			metric_of[k] = metric
+		}
+
+		# Adds the CPU used since the previous reading of the same process.
+		# total keeps every same-process delta; the rate uses only deltas whose
+		# own span is continuous, so a skipped or failed reading cannot inflate it.
+		function cpu(series, pid, seconds, t, step,   used, span) {
+			if (pid == "" || seconds == "") return
+			seconds += 0
+			if (pid == cpu_pid[series] && seconds >= cpu_last[series] && t > cpu_t[series]) {
+				used = seconds - cpu_last[series]
+				span = t - cpu_t[series]
+				cpu_total[series] += used
+				cpu_pairs[series]++
+				if (span > 0 && span <= 3 * step) {
+					cpu_used[series] += used; cpu_span[series] += span
+					if (used * 100 / span > cpu_max[series]) cpu_max[series] = used * 100 / span
+				}
+			}
+			cpu_pid[series] = pid; cpu_last[series] = seconds; cpu_t[series] = t
+		}
+
+		function cpu_rate(label, series) {
+			if (cpu_span[series])
+				printf "%-20savg %.2f%% / max interval %.2f%% of one core\n", label, cpu_used[series] * 100 / cpu_span[series], cpu_max[series]
+			else
+				printf "%-20sunavailable (need two compatible readings within 3 sampling intervals)\n", label
+		}
+
+		{ sub(/\r$/, "") }
+		FNR == 1 { delete col; for (i = 1; i <= NF; i++) col[$i] = i; next }
 		{
 			n++
-			if (first == "") first = $1
-			last = $1
-			if ($2 == "") { down++; next }
-			if ($3 != instance) { if (instance != "") restarts++; instance = $3 }
-			rss = $4 / 1024
-			if (min == "" || rss < min) min = rss
-			if (rss > max) max = rss
-			sum += rss; up++
-			if ($6 != "") { pct += $6; pcts++; if ($6 > maxpct) maxpct = $6 }
-			if ($2 == pid && $5 >= cpu) used += $5 - cpu
-			pid = $2; cpu = $5
-			tmux = $8 / 1024; if (tmux > tmuxmax) tmuxmax = tmux
-			if ($10 > sessions) sessions = $10
-			if ($11 > panes) panes = $11
-			if ($12 > 0) open++
-			if (nav != "" && $13 >= nav) navs += $13 - nav
-			nav = $13
+			t = v("time") + 0
+			if (n == 1) first = t
+			last = t
+
+			step = v("interval_s"); step = (step == "") ? default_step : step + 0
+			dt = (n == 1) ? 0 : t - prev_t
+			continuous = dt > 0 && dt <= 3 * step
+			if (continuous) awake += dt
+			else if (n > 1 && dt > 0) { gaps++; gap_time += dt }
+			prev_t = t
+
+			cpu("tmux", v("tmux_pid"), v("tmux_cpu_s"), t, step)
+			if (v("tmux_rss_kib") + 0 > tmux_rss_max) tmux_rss_max = v("tmux_rss_kib") + 0
+			if (v("tmux_private_kib") + 0 > tmux_private_max) tmux_private_max = v("tmux_private_kib") + 0
+			if (v("sessions") + 0 > sessions) sessions = v("sessions") + 0
+			if (v("panes") + 0 > panes) panes = v("panes") + 0
+
+			if (v("pickers_open") + 0 > 0) open++
+			if (v("picker_rss_kib") + 0 > picker_max) picker_max = v("picker_rss_kib") + 0
+			nav = v("navigations")
+			if (nav != "") { if (last_nav != "" && nav + 0 >= last_nav) navs += nav - last_nav; last_nav = nav + 0 }
+
+			pid = v("daemon_pid")
+			if (pid == "") { down++; next }
+
+			id = v("instance")
+			if (id != instance) { if (instance != "") restarts++; instance = id }
+			up++
+
+			rss = v("daemon_rss_kib")
+			if (rss != "") {
+				rss += 0
+				if (rss_count == 0 || rss < rss_min) rss_min = rss
+				if (rss > rss_max) rss_max = rss
+				rss_sum += rss; rss_count++
+				trend(id, "RSS", t, rss)
+			}
+
+			private = v("daemon_private_kib")
+			if (private != "") {
+				private += 0
+				if (privates == 0 || private < private_min) private_min = private
+				if (private > private_max) private_max = private
+				private_sum += private; privates++
+			}
+			if (v("daemon_peak_kib") + 0 > peak) peak = v("daemon_peak_kib") + 0
+			if (private != "") trend(id, "private", t, private)
+			identity = pid ":" id ":" v("daemon_cpu_start")
+			cpu("daemon", identity, v("daemon_cpu_s"), t, step)
+			cpu("children", identity, v("daemon_children_cpu_s"), t, step)
+			cpu("combined", identity, v("daemon_combined_cpu_s"), t, step)
+			if (v("daemon_combined_cpu_s") != "")
+				cpu("matched_daemon", identity, v("daemon_cpu_s"), t, step)
+			if (v("daemon_children_cpu_s") != "") child_samples++
 		}
 		END {
 			if (n == 0) { print "no samples"; exit }
-			printf "samples:           %d over %.1f h\n", n, (last - first) / 3600
-			printf "daemon down:       %d samples\n", down
-			printf "daemon restarts:   %d\n", restarts + 0
-			if (up) printf "daemon memory:     min %.1f / avg %.1f / max %.1f MiB\n", min, sum / up, max
-			if (pcts) printf "daemon CPU:        avg %.2f%% / max %.2f%% of one core\n", pct / pcts, maxpct
-			printf "daemon CPU time:   %.1f s\n", used
-			printf "tmux server max:   %.1f MiB\n", tmuxmax
+			printf "samples:            %d over %.1f h (%.1f h continuous, %d gaps of %.1f h)\n", n, (last - first) / 3600, awake / 3600, gaps, gap_time / 3600
+			printf "daemon down:        %d samples\n", down
+			printf "daemon restarts:    %d\n", restarts
+			if (privates) printf "daemon private:     min %.1f / avg %.1f / max %.1f MiB (%d/%d samples)\n", mib(private_min), mib(private_sum / privates), mib(private_max), privates, up
+			if (peak) printf "daemon private peak: %.1f MiB\n", mib(peak)
+			if (rss_count) printf "daemon RSS:         min %.1f / avg %.1f / max %.1f MiB (%d/%d samples)\n", mib(rss_min), mib(rss_sum / rss_count), mib(rss_max), rss_count, up
+
+			# Prefer the longest series; private wins a tie because it excludes code pages.
+			for (k in tn) {
+				if (tn[k] < 30) continue
+				length_k = tlast[k] - tfirst[k]
+				if (length_k > span || length_k == span && metric_of[k] == "private") { span = length_k; longest = k }
+			}
+			if (longest != "") {
+				k = longest
+				d = tn[k] * txx[k] - tx[k] * tx[k]
+				if (d > 0) printf "daemon memory trend: %+.2f MiB/day %s over %.1f h of one instance\n", mib((tn[k] * txy[k] - tx[k] * ty[k]) / d), metric_of[k], span / 3600
+			}
+
+			cpu_rate("daemon CPU:", "daemon")
+			if (child_samples) cpu_rate("matched daemon CPU:", "matched_daemon")
+			cpu_rate("children CPU:", "children")
+			cpu_rate("combined CPU:", "combined")
+			printf "CPU coverage:       daemon %.2f h / children %.2f h / combined %.2f h\n", cpu_span["daemon"] / 3600, cpu_span["children"] / 3600, cpu_span["combined"] / 3600
+			printf "child counters:     %d/%d daemon samples (exited/reaped children)\n", child_samples, up
+			printf "daemon CPU time:    %.1f s (includes sampling gaps)\n", cpu_total["daemon"]
+			if (cpu_pairs["children"])
+				printf "children CPU time:  %.1f s (includes sampling gaps)\n", cpu_total["children"]
+			if (cpu_pairs["combined"])
+				printf "combined CPU time:  %.1f s (includes sampling gaps)\n", cpu_total["combined"]
+			if (tmux_private_max) printf "tmux server max:    %.1f MiB private, %.1f MiB RSS\n", mib(tmux_private_max), mib(tmux_rss_max)
+			else printf "tmux server max:    %.1f MiB RSS\n", mib(tmux_rss_max)
+			if (cpu_span["tmux"]) printf "tmux server CPU:    avg %.2f%% of one core\n", cpu_used["tmux"] * 100 / cpu_span["tmux"]
 			printf "max sessions/panes: %d / %d\n", sessions, panes
-			printf "picker open in:    %d samples\n", open + 0
-			printf "picker navigations: %d\n", navs + 0
-		}' $files
+			printf "picker open in:     %d samples", open
+			if (picker_max) printf ", max %.1f MiB RSS", mib(picker_max)
+			printf "\n"
+			printf "picker navigations: %d\n", navs
+			print "scope:              combined = daemon + exited children, not tmux server; child memory peaks are not measured"
+		}' "${files[@]}"
+}
+
+usage() {
+	awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
 }
 
 case "${1:-}" in
@@ -206,5 +487,5 @@ case "${1:-}" in
 	follow) tail -n 5 -F "$(day_file)" ;;
 	sample) sample ;;
 	__loop) loop "$2" ;;
-	*) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+	*) usage; exit 2 ;;
 esac
