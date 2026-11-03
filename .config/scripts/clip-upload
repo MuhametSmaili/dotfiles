@@ -46,8 +46,54 @@ OS="$(uname -s)"
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------
-die() { printf 'clip-upload: %s\n' "$*" >&2; exit 1; }
+# die() also raises a notification: in background mode stderr goes to a log
+# file, so a notification is the only error the user actually sees.
+die() { printf 'clip-upload: %s\n' "$*" >&2; notify "clip-upload failed" "$*"; exit 1; }
 warn() { printf 'clip-upload: warning: %s\n' "$*" >&2; }
+
+# Should the upload run detached from the caller?
+#
+# Vicinae hard-kills (SIGKILL) compact/silent/inline script commands after
+# 10 seconds (vicinae script-actions.cpp, issue #1512). An ssh upload can
+# exceed that, and SIGKILL skips the EXIT trap, so the upload is lost and the
+# temp dir and lock are left behind. When Vicinae is the caller we grab the
+# clipboard in the foreground, then hand the upload to a detached child and
+# return at once.
+# Override with CLIP_UPLOAD_BACKGROUND=1 (always detach) or =0 (never).
+should_detach() {
+    case "${CLIP_UPLOAD_BACKGROUND:-}" in
+        1) return 0 ;;
+        0) return 1 ;;
+    esac
+    local parent
+    parent="$(ps -o comm= -p "$PPID" 2>/dev/null || true)"
+    case "${parent##*/}" in
+        [Vv]icinae) return 0 ;;
+    esac
+    return 1
+}
+
+# Run "$@" and kill it if it is still running after $1 seconds.
+# Returns the command's status, or 124 on timeout. BatchMode stops ssh from
+# prompting, but an SSH agent that waits for approval (e.g. 1Password) can
+# still block it, and a hung run would hold the lock forever.
+run_with_timeout() {
+    local secs="$1"; shift
+    # Explicit 0<&0: without job control bash points a background job's stdin
+    # at /dev/null, which would make ssh upload an empty file.
+    "$@" 0<&0 &
+    local pid=$! ticks=0
+    while kill -0 "$pid" 2>/dev/null; do
+        if (( ticks >= secs * 2 )); then
+            kill -TERM "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+            return 124
+        fi
+        sleep 0.5
+        ticks=$((ticks + 1))
+    done
+    wait "$pid"
+}
 
 notify() {
     # $1 = title, $2 = message. Values are passed as argv rather than
@@ -191,8 +237,7 @@ WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/clip-upload.XXXXXX")"
 IMG="$WORKDIR/clip.png"
 
 if ! grab_clipboard_image "$IMG"; then
-    notify "clip-upload" "No image on clipboard"
-    die "clipboard does not contain a PNG image"
+    die "No image on clipboard"
 fi
 
 FILENAME="$(date +%Y-%m-%d-%H-%M-%S).png"
@@ -205,51 +250,69 @@ FILENAME="$(date +%Y-%m-%d-%H-%M-%S).png"
 notify "Uploading to ${HOST}…" "$FILENAME"
 
 # ----------------------------------------------------------------------
-# Upload
+# Upload + feedback
 # ----------------------------------------------------------------------
-# BatchMode=yes is important: when launched from skhd/Vicinae there is no
-# TTY, so an ssh prompt (passphrase, unknown host key) would block forever
-# while holding the lock. Better to fail loudly.
-SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10)
+upload_and_report() {
+    # BatchMode=yes is important: when launched from skhd/Vicinae there is no
+    # TTY, so an ssh prompt (passphrase, unknown host key) would block forever
+    # while holding the lock. Better to fail loudly.
+    local ssh_opts=(-o BatchMode=yes -o ConnectTimeout=10)
 
-# One connection instead of three (mkdir + scp + ln). The image arrives on
-# stdin; it is written to a dot-prefixed temp name and renamed, so a reader
-# following latest.png can never observe a half-written file.
-remote_script="set -e
+    # One connection instead of three (mkdir + scp + ln). The image arrives on
+    # stdin; it is written to a dot-prefixed temp name and renamed, so a reader
+    # following latest.png can never observe a half-written file.
+    local remote_script="set -e
 umask 022
 mkdir -p \"$REMOTE_DIR\"
 cat > \"$REMOTE_DIR/.$FILENAME.part\"
 mv \"$REMOTE_DIR/.$FILENAME.part\" \"$REMOTE_DIR/$FILENAME\"
 ln -sfn \"$REMOTE_DIR/$FILENAME\" \"$REMOTE_DIR/latest.png\" || exit 9"
 
-set +e
-ssh "${SSH_OPTS[@]}" "$HOST" "$remote_script" < "$IMG"
-ssh_status=$?
-set -e
+    local ssh_status=0
+    run_with_timeout 60 ssh "${ssh_opts[@]}" "$HOST" "$remote_script" < "$IMG" \
+        || ssh_status=$?
 
-case "$ssh_status" in
-    0) ;;
-    9) warn "uploaded, but could not update latest.png symlink" ;;
-    255)
-        die "ssh could not connect to '$HOST'. If this host is new, run 'ssh $HOST true' once interactively to accept the key / unlock your passphrase."
-        ;;
-    *)
-        notify "Upload failed" "$HOST"
-        die "upload to $HOST:$DIR/$FILENAME failed (exit $ssh_status)"
-        ;;
-esac
+    case "$ssh_status" in
+        0) ;;
+        9) warn "uploaded, but could not update latest.png symlink" ;;
+        124) die "upload to $HOST timed out after 60s (is your SSH agent waiting for approval?)" ;;
+        255)
+            die "ssh could not connect to '$HOST'. If this host is new, run 'ssh $HOST true' once interactively to accept the key / unlock your passphrase."
+            ;;
+        *) die "upload to $HOST:$DIR/$FILENAME failed (exit $ssh_status)" ;;
+    esac
 
-# ----------------------------------------------------------------------
-# Feedback
-# ----------------------------------------------------------------------
-REMOTE_PATH="$DIR/$FILENAME"
-if [[ -n "$URL" ]]; then
-    # Strip trailing slash from URL for consistent concatenation.
-    RESULT="${URL%/}/$FILENAME"
-else
-    RESULT="$HOST:$REMOTE_PATH"
+    local remote_path="$DIR/$FILENAME" result
+    if [[ -n "$URL" ]]; then
+        # Strip trailing slash from URL for consistent concatenation.
+        result="${URL%/}/$FILENAME"
+    else
+        result="$HOST:$remote_path"
+    fi
+
+    copy_to_local_clipboard "$result"
+    notify "Uploaded ✓" "$HOST:$remote_path"
+    printf '%s\n' "$result"
+}
+
+if should_detach; then
+    # The child takes over the work dir and lock: it gets its own EXIT trap,
+    # and the parent forgets both so its own exit does not delete them.
+    # stdout/stderr go to a log because the caller's pipes close when the
+    # parent exits.
+    LOG="${TMPDIR:-/tmp}/clip-upload.$(id -u).log"
+    (
+        trap cleanup EXIT
+        upload_and_report
+    ) </dev/null >"$LOG" 2>&1 &
+    child=$!
+    echo "$child" > "$LOCKDIR/pid"
+    disown "$child" 2>/dev/null || true
+    WORKDIR=""
+    LOCK_OWNED=false
+    # Vicinae shows this first stdout line as the toast.
+    printf 'Uploading to %s…\n' "${HOST}"
+    exit 0
 fi
 
-copy_to_local_clipboard "$RESULT"
-notify "Uploaded ✓" "$HOST:$REMOTE_PATH"
-printf '%s\n' "$RESULT"
+upload_and_report

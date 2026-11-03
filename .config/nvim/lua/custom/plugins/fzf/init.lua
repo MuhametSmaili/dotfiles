@@ -110,13 +110,23 @@ return {
 		{
 			"<leader>gb",
 			function()
-				require("fzf-lua").git_bcommits({
-					fzf_opts = {
-						-- ["--preview-window"] = "nohidden,down,70%,border-top,+{3}+3/3,~3",
-					},
-				})
+				require("custom.plugins.fzf.utils").buffer_commits()
 			end,
-			desc = "Git buffer commits",
+			desc = "Git buffer commits (CodeDiff)",
+		},
+		{
+			"<leader>gB",
+			function()
+				require("custom.plugins.fzf.utils").buffer_commits_compare()
+			end,
+			desc = "Git buffer commits (CodeDiff two commits)",
+		},
+		{
+			"<leader>gc",
+			function()
+				require("custom.plugins.fzf.utils").commits()
+			end,
+			desc = "Git commits (CodeDiff)",
 		},
 		{
 			"<leader>gA",
