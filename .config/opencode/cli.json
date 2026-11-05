@@ -1,9 +1,5 @@
 {
   "$schema": "https://opencode.ai/v2/cli.json",
-  "theme": {
-    "name": "system",
-    "mode": "system"
-  },
   "tabs": {
     "mode": "off",
     "layout": "horizontal",
@@ -35,5 +31,8 @@
   "attention": {
     "notifications": true,
     "sound": true
+  },
+  "theme": {
+    "name": "rosepine"
   }
 }
