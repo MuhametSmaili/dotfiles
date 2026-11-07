@@ -5,7 +5,7 @@ source "$HELPERS_DIR/utils.sh"
 source "$HELPERS_DIR/pi-agent.sh"
 source "$HELPERS_DIR/kiro.sh"
 
-run_cmd mkdir -p ~/.config/zsh ~/.config/tmux
+run_cmd mkdir -p ~/.config/zsh ~/.config/tmux ~/.config/hetki/action_helpers
 
 install_zsh
 install_tmux_plugins

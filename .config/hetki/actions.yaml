@@ -1,0 +1,142 @@
+version: 1
+actions:
+  copy-commit-hash:
+    label: Copy Git commit hash…
+    scope: [pane]
+    steps:
+      - select: commit
+        title: Choose a commit · latest 1,000 on this branch
+        source:
+          exec:
+            argv: [sh, -c, 'root=$XDG_CONFIG_HOME; test -n "$root" || root="$HOME/.config"; exec python3 "$root/hetki/action_helpers/commits.py"']
+            timeout: 15s
+      - run:
+          argv:
+            - sh
+            - -c
+            - 'root=$XDG_CONFIG_HOME; test -n "$root" || root="$HOME/.config"; exec python3 "$root/hetki/action_helpers/clipboard.py" "$@"'
+            - copy-hash
+            - "${steps.commit.value.hash}"
+
+  move-pane-within-session:
+    label: Move pane within this session and focus…
+    scope: [pane]
+    steps:
+      - select: window
+        title: Choose a window or create a new one
+        source:
+          exec:
+            argv: [sh, -c, 'root=$XDG_CONFIG_HOME; test -n "$root" || root="$HOME/.config"; exec python3 "$root/hetki/action_helpers/move_pane.py" "$@"', hetki-move-pane, windows]
+      - run:
+          argv: [sh, -c, 'root=$XDG_CONFIG_HOME; test -n "$root" || root="$HOME/.config"; exec python3 "$root/hetki/action_helpers/move_pane.py" "$@"', hetki-move-pane, move]
+
+  move-pane-to-session:
+    label: Move pane to another session and focus…
+    scope: [pane]
+    steps:
+      - select: session
+        title: Choose destination session
+        source:
+          exec:
+            argv: [sh, -c, 'root=$XDG_CONFIG_HOME; test -n "$root" || root="$HOME/.config"; exec python3 "$root/hetki/action_helpers/move_pane.py" "$@"', hetki-move-pane, sessions]
+      - select: window
+        title: Choose a window or create a new one
+        source:
+          exec:
+            argv: [sh, -c, 'root=$XDG_CONFIG_HOME; test -n "$root" || root="$HOME/.config"; exec python3 "$root/hetki/action_helpers/move_pane.py" "$@"', hetki-move-pane, windows]
+      - run:
+          argv: [sh, -c, 'root=$XDG_CONFIG_HOME; test -n "$root" || root="$HOME/.config"; exec python3 "$root/hetki/action_helpers/move_pane.py" "$@"', hetki-move-pane, move]
+
+  split-pane:
+    label: Split pane with a new shell and focus…
+    scope: [pane]
+    steps:
+      - select: layout
+        title: Choose split direction
+        source:
+          items:
+            - id: horizontal
+              label: Side by side
+              value: {flag: "-h"}
+            - id: vertical
+              label: Stacked
+              value: {flag: "-v"}
+      - run:
+          argv:
+            - tmux
+            - -S
+            - "${context.server.socket}"
+            - split-window
+            - "${steps.layout.value.flag}"
+            - -t
+            - "${context.subject.pane_id}"
+            - -c
+            - "#{pane_current_path}"
+
+  toggle-zoom:
+    label: Toggle pane zoom
+    scope: [pane]
+    steps:
+      - run:
+          argv: [tmux, -S, "${context.server.socket}", resize-pane, -Z, -t, "${context.subject.pane_id}"]
+
+  open-worktree:
+    label: Open existing worktree…
+    scope: [pane]
+    steps:
+      - select: worktree
+        title: Choose a worktree from this pane's repository
+        source:
+          exec:
+            argv: [sh, -c, 'root=$XDG_CONFIG_HOME; test -n "$root" || root="$HOME/.config"; exec python3 "$root/hetki/action_helpers/worktrees.py" "$@"', hetki-worktrees, worktrees]
+      - select: placement
+        title: Open shell in…
+        source:
+          items:
+            - {id: window-focus, label: New window and focus, value: {kind: window, focus: true}}
+            - {id: horizontal-focus, label: Split side by side and focus, value: {kind: horizontal, focus: true}}
+            - {id: vertical-focus, label: Split stacked and focus, value: {kind: vertical, focus: true}}
+            - {id: window, label: New window (in background)}
+            - {id: horizontal, label: Split side by side (keep focus)}
+            - {id: vertical, label: Split stacked (keep focus)}
+      - run:
+          argv: [sh, -c, 'root=$XDG_CONFIG_HOME; test -n "$root" || root="$HOME/.config"; exec python3 "$root/hetki/action_helpers/worktrees.py" "$@"', hetki-worktrees, open]
+
+  new-worktree:
+    label: Create worktree and open a shell…
+    scope: [pane]
+    steps:
+      - select: branch
+        title: New scratch branch or unused local branch
+        source:
+          exec:
+            argv: [sh, -c, 'root=$XDG_CONFIG_HOME; test -n "$root" || root="$HOME/.config"; exec python3 "$root/hetki/action_helpers/worktrees.py" "$@"', hetki-worktrees, branches]
+      - select: placement
+        title: Open shell in…
+        source:
+          items:
+            - {id: window-focus, label: New window and focus, value: {kind: window, focus: true}}
+            - {id: horizontal-focus, label: Split side by side and focus, value: {kind: horizontal, focus: true}}
+            - {id: vertical-focus, label: Split stacked and focus, value: {kind: vertical, focus: true}}
+            - {id: window, label: New window (in background)}
+            - {id: horizontal, label: Split side by side (keep focus)}
+            - {id: vertical, label: Split stacked (keep focus)}
+      - run:
+          argv: [sh, -c, 'root=$XDG_CONFIG_HOME; test -n "$root" || root="$HOME/.config"; exec python3 "$root/hetki/action_helpers/worktrees.py" "$@"', hetki-worktrees, create]
+          timeout: 1m
+
+  window-layout:
+    label: Change window layout…
+    scope: [pane]
+    steps:
+      - select: layout
+        title: Choose window layout
+        source:
+          items:
+            - {id: tiled, label: Tiled grid}
+            - {id: even-horizontal, label: All panes side by side}
+            - {id: even-vertical, label: All panes stacked}
+            - {id: main-horizontal, label: Main pane above smaller panes}
+            - {id: main-vertical, label: Main pane beside smaller panes}
+      - run:
+          argv: [tmux, -S, "${context.server.socket}", select-layout, -t, "${context.subject.pane_id}", "${steps.layout.id}"]

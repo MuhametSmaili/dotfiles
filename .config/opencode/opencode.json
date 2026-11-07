@@ -35,7 +35,7 @@
   "references": {
     "project-vault": {
       "path": "~/.vaults/personal/ai/Projects",
-      "description": "Authoritative plans, project status, decisions, and technical research for every project."
+      "description": "Supporting project designs, decisions, research, and historical plans. Use Vikunja for task tracking when requested."
     }
   },
   "permissions": [
@@ -108,7 +108,8 @@
     { "action": "shell", "resource": "zoxide *", "effect": "allow" },
     { "action": "context7_*", "resource": "*", "effect": "deny" },
     { "action": "deepwiki_*", "resource": "*", "effect": "deny" },
-    { "action": "exa_*", "resource": "*", "effect": "deny" }
+    { "action": "exa_*", "resource": "*", "effect": "deny" },
+    { "action": "vikunja_*", "resource": "*", "effect": "ask" }
   ],
   "agents": {
     "build": {
@@ -142,17 +143,27 @@
   },
   "mcp": {
     "servers": {
+      "vikunja": {
+        "type": "remote",
+        "url": "{env:VIKUNJA_MCP_URL}",
+        "oauth": false,
+        "headers": {
+          "Authorization": "Bearer {env:VIKUNJA_MCP_TOKEN}"
+        }
+      },
       "context7": {
         "type": "remote",
         "url": "https://mcp.context7.com/mcp"
       },
       "figma": {
         "type": "remote",
-        "url": "http://127.0.0.1:3845/mcp"
+        "url": "http://127.0.0.1:3845/mcp",
+        "disabled": true
       },
       "figwright": {
         "type": "local",
-        "command": ["npx", "-y", "@figwright/mcp@latest"]
+        "command": ["npx", "-y", "@figwright/mcp@latest"],
+        "disabled": true
       },
       "deepwiki": {
         "type": "remote",
@@ -161,6 +172,10 @@
       "exa": {
         "type": "remote",
         "url": "https://mcp.exa.ai/mcp"
+      },
+      "btt": {
+        "type": "remote",
+        "url": "http://127.0.0.1:64832/mcp"
       }
     }
   }

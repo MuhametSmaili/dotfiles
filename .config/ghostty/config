@@ -1,73 +1,54 @@
-# =============================================================================
 # Appearance
-# =============================================================================
-theme                  = light:Catppuccin Latte,dark:Merino Dark
-background-opacity     = 0.5
-background-blur = macos-glass-regular
-macos-titlebar-style = transparent
-alpha-blending         = linear-corrected
-palette-generate       = true
-palette-harmonious     = true
-progress-style         = true
+theme              = light:Catppuccin Latte,dark:Merino Dark
+# Lower = more transparent.
+background-opacity = 0.75
+background-blur    = macos-glass-regular
+alpha-blending     = native
+palette-generate   = true
+palette-harmonious = true
+progress-style     = true
 
-# Optional extras (uncomment to enable)
-#minimum-contrast = 2
+# Keep dim text readable.
+minimum-contrast = 2
 #bold-color       = bright
 
-# =============================================================================
 # Fonts
-# =============================================================================
 font-family    = "MonoLisaCode Variable"
-font-size      = 18
-font-variation = wght=430
-# GRAD=-30 thinned strokes; Rex doesn't apply it, so it's off to match
-#font-variation = GRAD=-30
-# Core typography
+font-size      = 16
+# Ligatures and glyph variants.
 font-feature   = calt, liga
-# Character differentiation
 font-feature   = zero, ss14
-# Coding-specific character variants
 font-feature   = ss13
-# Stylistic choices
 font-feature   = ss01, ss11
-# Curated coding ligatures
 font-feature   = cv02, cv04, cv05, cv07, cv08, cv09
 
-# =============================================================================
 # Cursor
-# =============================================================================
 cursor-style        = block
 cursor-style-blink  = false
 cursor-invert-fg-bg = false
 
-# =============================================================================
 # Window
-# =============================================================================
 macos-titlebar-style = hidden
 macos-window-shadow  = true
 macos-option-as-alt  = true
-window-padding-x     = 5
-window-padding-y     = 5,1
+window-padding-x       = 5
+window-padding-y       = 8
+# Split leftover space evenly instead of pushing it to the bottom.
+window-padding-balance = equal
 
-# =============================================================================
 # Shell integration
-# =============================================================================
 # no-cursor  : keep our configured cursor-style at the prompt
 # ssh-env    : forward COLORTERM / TERM_PROGRAM over ssh
 # ssh-terminfo : install xterm-ghostty terminfo on remote hosts on first ssh
 # sudo       : preserve TERMINFO through sudo so root sessions render correctly
 shell-integration-features = no-cursor,ssh-env,ssh-terminfo,sudo
 
-# =============================================================================
 # Clipboard
-# =============================================================================
 copy-on-select  = true
 clipboard-write = allow
 clipboard-read  = allow
 
-# =============================================================================
 # Bell & notifications
-# =============================================================================
 # attention : bounce the dock icon while unfocused
 # title     : show a bell icon in the tab title until refocused
 # border    : flash the surface border on the alerted pane
@@ -79,15 +60,11 @@ bell-features = attention,title,border,system
 notify-on-command-finish       = unfocused
 notify-on-command-finish-after = 30s
 
-# =============================================================================
 # Undo history
-# =============================================================================
 # 60s window to reopen a closed split / tab / window with cmd+z.
 undo-timeout = 60s
 
-# =============================================================================
 # Quick terminal (Quake-style drop-down)
-# =============================================================================
 # Toggled globally with meh+t (ctrl+alt+shift+t) from any app.
 # Requires macOS Accessibility permission (System Settings > Privacy & Security).
 quick-terminal-position           = top
@@ -97,11 +74,11 @@ quick-terminal-animation-duration = 0.15
 quick-terminal-autohide           = true
 quick-terminal-space-behavior     = move
 
-# =============================================================================
 # Keybindings
-# =============================================================================
-# tmux prefix + o : switch to last tmux window (sends ctrl+a then o)
+# tmux prefix + o: open Hetki (sends ctrl+a then o)
 keybind = cmd+p=text:\x01o
+# tmux prefix + u: open actions for the active pane
+keybind = cmd+k=text:\x01u
 
 # Toggle the quick terminal from anywhere on macOS
 # keybind = global:ctrl+alt+shift+t=toggle_quick_terminal

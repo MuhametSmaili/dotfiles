@@ -71,11 +71,35 @@ them:
 - `capsmeh.lua` — Caps Lock acts as Meh when you hold it, and as Escape when you tap it
 - `ghostty.lua` — opens a Ghostty window in a directory
 - `key-caster.lua` — shows each keystroke on screen, which helps for screen recordings
+- `markdown-paste.lua` — converts copied Markdown to rich text with Pandoc and pastes it (Meh+V)
 - `mic.lua` — mutes and unmutes the microphone
 - `ssh.lua` — lists the hosts in `~/.ssh/config`, and opens one in a terminal
 
 The Leader menu (Meh+Space) starts most of these. "Meh" means
 `ctrl + alt + shift`.
+
+### Paste Markdown as rich text
+
+Copy Markdown, focus the destination editor, then press **Meh+V** (hold Caps Lock
+and press V). Release the keys to paste formatted text. Normal **Cmd+V** is unchanged.
+
+Requires Pandoc 3.13 or newer in `/opt/homebrew/bin` or `/usr/local/bin`. The
+`markdown-paste-writer.lua` companion uses Pandoc's GitHub-flavored Markdown
+parser to produce HTML and a Markdown-free plain-text fallback in one local
+process. Bold, italics, headings, lists, links, tables and code blocks are
+converted; the receiving app decides which formatting it preserves. Teams
+formatting needs an in-app check, particularly tables and code blocks.
+
+The converted rich text stays on the clipboard. Images become their alt text;
+raw HTML is treated as text, and only HTTP, HTTPS and mailto links are retained.
+Conversion does not fetch resources, use the network or write clipboard content
+to temporary files. It never presses Enter or sends a message.
+
+Conversion is asynchronous, accepts up to 1 MiB of text and times out after ten
+seconds, including waiting for modifier keys to be released. Changing the
+clipboard, foreground app or focused window cancels the operation before it
+writes or pastes. Moving between editors within the same window is not detected.
+Errors leave the clipboard unchanged unless the clipboard write itself fails.
 
 ## Notes
 

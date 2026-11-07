@@ -1,1 +1,0 @@
-../../../../.vaults/personal/ai/project-vault-policy.md

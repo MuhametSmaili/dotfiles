@@ -11,6 +11,7 @@ local SSH = require("ssh")
 local Bing = require("bing")
 local Ghostty = require("ghostty")
 local AppDeck = require("appdeck")
+local MarkdownPaste = require("markdown-paste")
 
 Bing.start()
 CapsMeh.start()
@@ -23,6 +24,7 @@ hs.loadSpoon("CleanMode")
 hs.loadSpoon("Leader")
 
 hs.hotkey.bind(meh, "tab", AppDeck.toggle)
+hs.hotkey.bind(meh, "v", MarkdownPaste.paste)
 
 spoon.Leader.create(meh, "space", {
 	r = { label = "Reload", action = hs.reload },

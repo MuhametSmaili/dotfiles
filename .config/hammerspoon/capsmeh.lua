@@ -75,6 +75,10 @@ local function rewrite_as_meh(event)
 	return true, { replacement }
 end
 
+function M.isHeld()
+	return escape_held
+end
+
 function M.start()
 	if tap then
 		return tap
