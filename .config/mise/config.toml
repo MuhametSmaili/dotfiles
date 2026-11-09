@@ -22,3 +22,7 @@ lua = "5.4"
 node = "24"
 python = "3.13"
 rust = "latest"
+
+
+[tool_alias]
+tmux = "asdf:mise-plugins/mise-tmux"

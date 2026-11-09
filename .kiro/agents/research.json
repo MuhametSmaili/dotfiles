@@ -1,17 +1,142 @@
 {
   "name": "research",
   "description": "Search docs, web, and GitHub wikis — one agent for all lookups",
-  "prompt": "You are a research agent. Use Context7 for library/framework docs and API references. Use DeepWiki for GitHub repository documentation. Use Exa for web search, blog posts, and current information. Pick the right tool for the question. Be concise — return relevant findings with source links, not essays.",
+  "prompt": "You are a research agent. Prefer the CLI recipes documented in ~/.kiro/skills/research/SKILL.md: Context7 (`ctx7` or `npx -y ctx7`) for library docs, `gh` for GitHub repos/wikis, `curl` + `jq` for package registries and Jina Reader, Exa API for web search. MCP tools (@context7, @deepwiki, @exa) are a fallback if a CLI is unavailable. Be concise — return findings with source links, not essays. Run independent lookups in parallel. Never fabricate results; if a lookup fails, say so and try the next recipe.",
+  "resources": [
+    "skill://~/.kiro/skills/research/**",
+    "skill://~/.kiro/skills/context7/**"
+  ],
   "tools": [
+    "@context7",
+    "@deepwiki",
+    "@exa",
+    "glob",
+    "grep",
+    "read",
+    "shell",
+    "write"
+  ],
+  "allowedTools": [
     "fs_read",
-    "fs_write",
     "grep",
     "glob",
+    "execute_bash",
     "@context7",
     "@deepwiki",
     "@exa"
   ],
-  "allowedTools": ["fs_read", "grep", "glob", "@context7", "@deepwiki", "@exa"],
+  "toolsSettings": {
+    "fs_read": {
+      "deniedPaths": ["**/*.env", "**/*.env.*", "**/*.envrc", "**/secrets/**"]
+    },
+    "fs_write": {
+      "deniedPaths": ["**/*.env", "**/*.env.*", "**/*.envrc", "**/secrets/**"]
+    },
+    "execute_bash": {
+      "allowedCommands": [
+        "ctx7.*",
+        "npx -y ctx7.*",
+        "gh .*",
+        "gh api.*",
+        "gh search.*",
+        "curl -s.*",
+        "curl -sL.*",
+        "curl -s -H.*",
+        "curl -s -X POST.*",
+        "jq.*",
+        "rg.*",
+        "grep.*",
+        "head.*",
+        "tail.*",
+        "sort.*",
+        "uniq.*",
+        "wc.*",
+        "base64.*",
+        "tr.*",
+        "sed.*",
+        "awk.*",
+        "cut.*",
+        "git clone --depth 1.*",
+        "which.*",
+        "date.*",
+        "mkdir.*"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
   "includeMcpJson": true,
-  "welcomeMessage": "What do you need to look up? Docs, web, or a GitHub repo."
+  "welcomeMessage": "What do you need to look up? Docs, web, or a GitHub repo.",
+  "permissions": {
+    "rules": [
+      {
+        "capability": "shell",
+        "match": [
+          "ctx7*",
+          "npx -y ctx7*",
+          "gh *",
+          "gh api*",
+          "gh search*",
+          "curl -s*",
+          "curl -sL*",
+          "curl -s -H*",
+          "curl -s -X POST*",
+          "jq*",
+          "rg*",
+          "grep*",
+          "head*",
+          "tail*",
+          "sort*",
+          "uniq*",
+          "wc*",
+          "base64*",
+          "tr*",
+          "sed*",
+          "awk*",
+          "cut*",
+          "git clone --depth 1*",
+          "which*",
+          "date*",
+          "mkdir*"
+        ],
+        "effect": "allow"
+      },
+      {
+        "capability": "fs_read",
+        "match": [
+          "**/*.env",
+          "**/*.env/**",
+          "**/*.env.*",
+          "**/*.env.*/**",
+          "**/*.envrc",
+          "**/*.envrc/**",
+          "**/secrets/**"
+        ],
+        "effect": "deny"
+      },
+      {
+        "capability": "fs_write",
+        "match": ["**/*.env", "**/*.env.*", "**/*.envrc", "**/secrets/**"],
+        "effect": "deny"
+      },
+      {
+        "capability": "fs_read",
+        "effect": "allow"
+      },
+      {
+        "capability": "shell",
+        "effect": "allow"
+      },
+      {
+        "capability": "mcp",
+        "match": ["context7/*", "deepwiki/*", "exa/*"],
+        "effect": "allow"
+      }
+    ],
+    "policies": ["read-only-shell"]
+  },
+  "kiroUpgrade": {
+    "revision": 2,
+    "fingerprint": "sha256:c1d52cf95fdd9de82b7df00b856c386b8ae1e10180b1000fa51e6d51f439be74",
+    "source": "sha256:d876e6672889e991f83ba6c4c771ba9b2c339e207965a04909654f0b3206cbec"
+  }
 }

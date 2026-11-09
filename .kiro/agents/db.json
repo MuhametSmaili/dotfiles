@@ -8,13 +8,54 @@
     "skill://.kiro/skills/*supabase*/**",
     "skill://.kiro/skills/*database*/**"
   ],
-  "tools": ["fs_read", "fs_write", "execute_bash", "grep", "glob", "code"],
+  "tools": [
+    "code",
+    "glob",
+    "grep",
+    "read",
+    "shell",
+    "write"
+  ],
   "toolsSettings": {
     "fs_write": {
-      "deniedPaths": ["**/*.env", "**/*.env.*", "**/*.envrc", "**/secrets/**"]
+      "deniedPaths": [
+        "**/*.env",
+        "**/*.env.*",
+        "**/*.envrc",
+        "**/secrets/**"
+      ]
     },
     "execute_bash": {
       "autoAllowReadonly": true
     }
+  },
+  "permissions": {
+    "rules": [
+      {
+        "capability": "fs_write",
+        "match": [
+          "**/*.env",
+          "**/*.env.*",
+          "**/*.envrc",
+          "**/secrets/**"
+        ],
+        "effect": "deny"
+      },
+      {
+        "capability": "fs_read",
+        "match": [
+          "./**"
+        ],
+        "effect": "allow"
+      }
+    ],
+    "policies": [
+      "read-only-shell"
+    ]
+  },
+  "kiroUpgrade": {
+    "revision": 2,
+    "fingerprint": "sha256:ccdb7839ac0868c7f7a9d30cf6746ac2409d9f5b5ee768cf1efe61c6c0b2a2e6",
+    "source": "sha256:fe998a4621d7922c97b860af050a87a5232b387ec017dfd2e89696727bab8a33"
   }
 }

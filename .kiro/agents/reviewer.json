@@ -7,13 +7,57 @@
     "file://.agent/tasks/IMPLEMENTATION_PLAN.md",
     "file://.agent/"
   ],
-  "tools": ["fs_read", "grep", "glob", "code", "subagent"],
-  "allowedTools": ["fs_read", "grep", "glob", "code", "subagent"],
+  "tools": [
+    "code",
+    "glob",
+    "grep",
+    "read",
+    "subagent/research"
+  ],
+  "allowedTools": [
+    "fs_read",
+    "grep",
+    "glob",
+    "code",
+    "subagent"
+  ],
   "toolsSettings": {
     "subagent": {
-      "availableAgents": ["research"],
-      "trustedAgents": ["research"]
+      "availableAgents": [
+        "research"
+      ],
+      "trustedAgents": [
+        "research"
+      ]
     }
   },
-  "welcomeMessage": "What code do you want reviewed? Point me to the files."
+  "welcomeMessage": "What code do you want reviewed? Point me to the files.",
+  "permissions": {
+    "rules": [
+      {
+        "capability": "subagent",
+        "match": [
+          "research"
+        ],
+        "effect": "allow"
+      },
+      {
+        "capability": "fs_read",
+        "effect": "allow"
+      },
+      {
+        "capability": "subagent",
+        "effect": "allow"
+      },
+      {
+        "capability": "skill",
+        "effect": "allow"
+      }
+    ]
+  },
+  "kiroUpgrade": {
+    "revision": 2,
+    "fingerprint": "sha256:b725ab981bea2196ccf1a5987ae789eda2c99708c563b0937683e6a3bdfca50e",
+    "source": "sha256:e5618fe595c51b8895c27486a66042a003c40a3db75cf36f6eec98658c896d0c"
+  }
 }

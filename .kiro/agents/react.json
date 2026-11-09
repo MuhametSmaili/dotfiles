@@ -9,13 +9,25 @@
     "file://.agent/tasks/IMPLEMENTATION_PLAN.md",
     "skill://.kiro/skills/*react*/SKILL.md"
   ],
-  "tools": ["*"],
+  "tools": [
+    "*"
+  ],
   "toolsSettings": {
     "fs_read": {
-      "deniedPaths": ["**/*.env", "**/*.env.*", "**/*.envrc", "**/secrets/**"]
+      "deniedPaths": [
+        "**/*.env",
+        "**/*.env.*",
+        "**/*.envrc",
+        "**/secrets/**"
+      ]
     },
     "fs_write": {
-      "deniedPaths": ["**/*.env", "**/*.env.*", "**/*.envrc", "**/secrets/**"]
+      "deniedPaths": [
+        "**/*.env",
+        "**/*.env.*",
+        "**/*.envrc",
+        "**/secrets/**"
+      ]
     },
     "execute_bash": {
       "allowedCommands": [
@@ -70,21 +82,142 @@
         "zip.*",
         "zoxide.*"
       ],
-      "deniedCommands": ["git push.*"],
+      "deniedCommands": [
+        "git push.*"
+      ],
       "autoAllowReadonly": true
     },
     "subagent": {
-      "availableAgents": ["research"],
-      "trustedAgents": ["research"]
+      "availableAgents": [
+        "research"
+      ],
+      "trustedAgents": [
+        "research"
+      ]
     }
   },
-  "hooks": {
-    "postToolUse": [
+  "hooks": [
+    {
+      "name": "postToolUse-0",
+      "trigger": "postToolUse",
+      "matcher": "write",
+      "action": {
+        "type": "command",
+        "command": "format_changed_files"
+      },
+      "timeout": 3
+    }
+  ],
+  "permissions": {
+    "rules": [
       {
-        "matcher": "write",
-        "command": "format_changed_files",
-        "timeout_ms": 3000
+        "capability": "shell",
+        "match": [
+          "ast-grep*",
+          "awk*",
+          "biome*",
+          "bun*",
+          "cargo*",
+          "cat*",
+          "cloc*",
+          "cp*",
+          "date*",
+          "diff*",
+          "fd*",
+          "find*",
+          "fnm*",
+          "fzf*",
+          "git*",
+          "go *",
+          "grep*",
+          "rg*",
+          "gsed*",
+          "head*",
+          "jq*",
+          "ls*",
+          "mkdir*",
+          "npm*",
+          "pnpm*",
+          "prettier*",
+          "pwd",
+          "sed*",
+          "sg*",
+          "shellcheck*",
+          "sort*",
+          "stow*",
+          "stylua*",
+          "tail*",
+          "tar*",
+          "touch*",
+          "tr*",
+          "tree*",
+          "tsc*",
+          "turbo*",
+          "uniq*",
+          "unzip*",
+          "vite*",
+          "vitest*",
+          "wc*",
+          "which*",
+          "xargs*",
+          "yarn*",
+          "zip*",
+          "zoxide*"
+        ],
+        "effect": "allow"
+      },
+      {
+        "capability": "shell",
+        "match": [
+          "git push*"
+        ],
+        "effect": "deny"
+      },
+      {
+        "capability": "fs_read",
+        "match": [
+          "**/*.env",
+          "**/*.env/**",
+          "**/*.env.*",
+          "**/*.env.*/**",
+          "**/*.envrc",
+          "**/*.envrc/**",
+          "**/secrets/**"
+        ],
+        "effect": "deny"
+      },
+      {
+        "capability": "fs_write",
+        "match": [
+          "**/*.env",
+          "**/*.env.*",
+          "**/*.envrc",
+          "**/secrets/**"
+        ],
+        "effect": "deny"
+      },
+      {
+        "capability": "subagent",
+        "match": [
+          "research"
+        ],
+        "effect": "allow"
+      },
+      {
+        "capability": "fs_read",
+        "match": [
+          "./**"
+        ],
+        "effect": "allow"
       }
+    ],
+    "policies": [
+      "read-only-shell"
     ]
+  },
+  "kiroUpgrade": {
+    "revision": 2,
+    "fingerprint": "sha256:9166e3d67a5f00d9a2fb9bb9feb132285e493559fb08f4819ffbed4c8467cc4d",
+    "source": "sha256:d753dfeab5dfa31e4ec5c2684a9749396d8519ff643e7f6c5bbb2a280d70dec8"
   }
 }

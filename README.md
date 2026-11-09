@@ -103,8 +103,8 @@ The Brewfile and the mise configuration do not provide hetki. Install it with Go
 go install github.com/MuhametSmaili/hetki@latest
 ```
 
-hetki starts and switches the tmux sessions. The `prefix + o` key binding opens
-it. The workspace files are in `~/.config/hetki/workspaces/`. Each file names
+hetki starts and switches the tmux sessions. The `prefix + o o` key binding
+(Ghostty: `cmd+p`) opens it. The workspace files are in `~/.config/hetki/workspaces/`. Each file names
 the sessions, the windows, and the paths. This repository does not hold these
 files, because the sessions differ on each machine.
 

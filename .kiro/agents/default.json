@@ -3,19 +3,39 @@
   "description": "General development — lean, no MCP. Delegates to specialized agents when needed.",
   "prompt": "You are a general development assistant.\n\nWhen you need latest library/framework docs or web search, delegate to the 'research' agent using the agent tool.\nDon't tell the user to switch agents — just delegate and bring back the answer.",
   "tools": [
+    "code",
+    "glob",
+    "grep",
+    "read",
+    "shell",
+    "subagent/db",
+    "subagent/go",
+    "subagent/node",
+    "subagent/planner",
+    "subagent/react",
+    "subagent/research",
+    "subagent/reviewer",
+    "write"
+  ],
+  "resources": [
+    "skill://.kiro/skills/**",
+    "skill://~/.kiro/skills/**"
+  ],
+  "allowedTools": [
     "fs_read",
-    "fs_write",
-    "execute_bash",
     "grep",
     "glob",
     "code",
     "subagent"
   ],
-  "resources": ["skill://.kiro/skills/**", "skill://~/.kiro/skills/**"],
-  "allowedTools": ["fs_read", "grep", "glob", "code", "subagent"],
   "toolsSettings": {
     "fs_read": {
-      "deniedPaths": ["**/*.env", "**/*.env.*", "**/*.envrc", "**/secrets/**"]
+      "deniedPaths": [
+        "**/*.env",
+        "**/*.env.*",
+        "**/*.envrc",
+        "**/secrets/**"
+      ]
     },
     "fs_write": {
       "deniedPaths": [
@@ -79,7 +99,9 @@
         "zip.*",
         "zoxide.*"
       ],
-      "deniedCommands": ["git push.*"],
+      "deniedCommands": [
+        "git push.*"
+      ],
       "autoAllowReadonly": true
     },
     "subagent": {
@@ -92,17 +114,136 @@
         "react",
         "db"
       ],
-      "trustedAgents": ["research"]
+      "trustedAgents": [
+        "research"
+      ]
     }
   },
-  "hooks": {
-    "postToolUse": [
+  "hooks": [
+    {
+      "name": "postToolUse-0",
+      "trigger": "postToolUse",
+      "matcher": "write",
+      "action": {
+        "type": "command",
+        "command": "format_changed_files"
+      },
+      "timeout": 3
+    }
+  ],
+  "welcomeMessage": "What are we building?",
+  "permissions": {
+    "rules": [
       {
-        "matcher": "write",
-        "command": "format_changed_files",
-        "timeout_ms": 3000
+        "capability": "shell",
+        "match": [
+          "ast-grep*",
+          "awk*",
+          "biome*",
+          "bun*",
+          "cargo*",
+          "cat*",
+          "cloc*",
+          "cp*",
+          "date*",
+          "diff*",
+          "fd*",
+          "find*",
+          "fnm*",
+          "fzf*",
+          "git*",
+          "go *",
+          "grep*",
+          "rg*",
+          "gsed*",
+          "head*",
+          "jq*",
+          "ls*",
+          "mkdir*",
+          "npm*",
+          "pnpm*",
+          "prettier*",
+          "pwd",
+          "sed*",
+          "sg*",
+          "shellcheck*",
+          "sort*",
+          "stow*",
+          "stylua*",
+          "tail*",
+          "tar*",
+          "touch*",
+          "tr*",
+          "tree*",
+          "tsc*",
+          "turbo*",
+          "uniq*",
+          "unzip*",
+          "vite*",
+          "vitest*",
+          "wc*",
+          "which*",
+          "xargs*",
+          "yarn*",
+          "zip*",
+          "zoxide*"
+        ],
+        "effect": "allow"
+      },
+      {
+        "capability": "shell",
+        "match": [
+          "git push*"
+        ],
+        "effect": "deny"
+      },
+      {
+        "capability": "fs_read",
+        "match": [
+          "**/*.env",
+          "**/*.env/**",
+          "**/*.env.*",
+          "**/*.env.*/**",
+          "**/*.envrc",
+          "**/*.envrc/**",
+          "**/secrets/**"
+        ],
+        "effect": "deny"
+      },
+      {
+        "capability": "fs_write",
+        "match": [
+          "**/*.env",
+          "**/*.env.*",
+          "**/*.envrc",
+          "**/secrets/**",
+          "~/.zshrc.local"
+        ],
+        "effect": "deny"
+      },
+      {
+        "capability": "subagent",
+        "match": [
+          "research"
+        ],
+        "effect": "allow"
+      },
+      {
+        "capability": "fs_read",
+        "effect": "allow"
+      },
+      {
+        "capability": "subagent",
+        "effect": "allow"
       }
+    ],
+    "policies": [
+      "read-only-shell"
     ]
   },
-  "welcomeMessage": "What are we building?"
+  "kiroUpgrade": {
+    "revision": 2,
+    "fingerprint": "sha256:6c34498410c92b468bb8093e8a6a596ef99f3e1a7a8c8ee12851cecef05e6ddc",
+    "source": "sha256:9000597b0594f6695c898227c2666605f57639edc16d9211a2ce53a7b4e561e9"
+  }
 }

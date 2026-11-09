@@ -13,18 +13,29 @@
     "skill://.kiro/skills/*api-design*/**"
   ],
   "tools": [
+    "code",
+    "glob",
+    "grep",
+    "read",
+    "shell",
+    "subagent/research",
+    "write"
+  ],
+  "allowedTools": [
     "fs_read",
-    "fs_write",
-    "execute_bash",
     "grep",
     "glob",
     "code",
     "subagent"
   ],
-  "allowedTools": ["fs_read", "grep", "glob", "code", "subagent"],
   "toolsSettings": {
     "fs_write": {
-      "deniedPaths": ["**/*.env", "**/*.env.*", "**/*.envrc", "**/secrets/**"]
+      "deniedPaths": [
+        "**/*.env",
+        "**/*.env.*",
+        "**/*.envrc",
+        "**/secrets/**"
+      ]
     },
     "execute_bash": {
       "allowedCommands": [
@@ -41,17 +52,80 @@
       "autoAllowReadonly": true
     },
     "subagent": {
-      "availableAgents": ["research"],
-      "trustedAgents": ["research"]
+      "availableAgents": [
+        "research"
+      ],
+      "trustedAgents": [
+        "research"
+      ]
     }
   },
-  "hooks": {
-    "postToolUse": [
+  "hooks": [
+    {
+      "name": "postToolUse-0",
+      "trigger": "postToolUse",
+      "matcher": "write",
+      "action": {
+        "type": "command",
+        "command": "format_changed_files"
+      },
+      "timeout": 3
+    }
+  ],
+  "permissions": {
+    "rules": [
       {
-        "matcher": "write",
-        "command": "format_changed_files",
-        "timeout_ms": 3000
+        "capability": "shell",
+        "match": [
+          "npm*",
+          "pnpm*",
+          "bun*",
+          "yarn*",
+          "npx*",
+          "tsc*",
+          "node*",
+          "make*",
+          "docker*"
+        ],
+        "effect": "allow"
+      },
+      {
+        "capability": "fs_write",
+        "match": [
+          "**/*.env",
+          "**/*.env.*",
+          "**/*.envrc",
+          "**/secrets/**"
+        ],
+        "effect": "deny"
+      },
+      {
+        "capability": "subagent",
+        "match": [
+          "research"
+        ],
+        "effect": "allow"
+      },
+      {
+        "capability": "fs_read",
+        "effect": "allow"
+      },
+      {
+        "capability": "subagent",
+        "effect": "allow"
+      },
+      {
+        "capability": "skill",
+        "effect": "allow"
       }
+    ],
+    "policies": [
+      "read-only-shell"
     ]
+  },
+  "kiroUpgrade": {
+    "revision": 2,
+    "fingerprint": "sha256:ab902ee678a497f6694bfb090255b7103a9aa7189a8cd69ed93dc0e9969a954c",
+    "source": "sha256:1a00ead71e387d8706241b6cd10d9ea780f34d0c9e22cd73e8e8cb45842865c0"
   }
 }

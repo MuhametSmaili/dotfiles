@@ -6,16 +6,70 @@
     "skill://.kiro/skills/*doc*/**",
     "skill://.kiro/skills/*pptx*/**"
   ],
-  "tools": ["fs_read", "fs_write", "grep", "glob", "code", "subagent"],
-  "allowedTools": ["fs_read", "grep", "glob", "code", "subagent"],
+  "tools": [
+    "code",
+    "glob",
+    "grep",
+    "read",
+    "subagent/research",
+    "write"
+  ],
+  "allowedTools": [
+    "fs_read",
+    "grep",
+    "glob",
+    "code",
+    "subagent"
+  ],
   "toolsSettings": {
     "fs_write": {
-      "allowedPaths": ["~/.vaults/personal/ai/Projects/**"]
+      "allowedPaths": [
+        "~/.vaults/personal/ai/Projects/**"
+      ]
     },
     "subagent": {
-      "availableAgents": ["research"],
-      "trustedAgents": ["research"]
+      "availableAgents": [
+        "research"
+      ],
+      "trustedAgents": [
+        "research"
+      ]
     }
   },
-  "welcomeMessage": "What do you want to plan? I'll ask for context before creating anything."
+  "welcomeMessage": "What do you want to plan? I'll ask for context before creating anything.",
+  "permissions": {
+    "rules": [
+      {
+        "capability": "fs_write",
+        "match": [
+          "~/.vaults/personal/ai/Projects/**"
+        ],
+        "effect": "allow"
+      },
+      {
+        "capability": "subagent",
+        "match": [
+          "research"
+        ],
+        "effect": "allow"
+      },
+      {
+        "capability": "fs_read",
+        "effect": "allow"
+      },
+      {
+        "capability": "subagent",
+        "effect": "allow"
+      },
+      {
+        "capability": "skill",
+        "effect": "allow"
+      }
+    ]
+  },
+  "kiroUpgrade": {
+    "revision": 2,
+    "fingerprint": "sha256:f751a8a66c9bc1928097c9deb4c98ef5c97f1fbff494a0e7d2be3c9e5d4bb9cd",
+    "source": "sha256:06c498bff5bd3204d29004958d28aa3a864893dd579a628eb3e0447429513663"
+  }
 }

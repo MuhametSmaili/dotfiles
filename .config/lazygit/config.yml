@@ -1,19 +1,30 @@
 git:
-  # Press | to switch layouts without leaving LazyGit.
+  # | switches renderer. Unified is first because side-by-side is laid out
+  # once at the current width: focus the diff (0) first, then press |.
   diffRenderers:
+    - name: Unified
+      # git config sets delta side-by-side = true; turn it off for this one
+      command: env GIT_CONFIG_PARAMETERS="'delta.side-by-side=false'" delta --dark --paging=never
+      colorArg: always
     - name: Side-by-side
       command: delta --dark --paging=never --side-by-side
       colorArg: always
-    - name: Unified
-      command: env GIT_CONFIG_PARAMETERS="'delta.side-by-side=false'" delta --dark --paging=never
-      colorArg: always
   overrideGpg: true
+  localBranchSortOrder: recency      # last checked out first, like `git checkout -`
+
 gui:
-  showCommandLog: false
   screenMode: half
+  showCommandLog: false
+  showRandomTip: false
+  nerdFontsVersion: "3"
+  commitGraphStyle: detailed         # "auto" falls back to classic under tmux
+  filterMode: fuzzy                  # / matches like fzf: "featauth" -> feature/auth
+  showDivergenceFromBaseBranch: arrowAndNumber   # e.g. ↓12 behind main
+  expandFocusedSidePanel: true
+
 customCommands:
-  - key: 'O'
-    context: 'files'
-    description: 'Review changes in CodeDiff'
-    command: 'nvim -c "CodeDiff --exit-on-close"'
+  - key: O
+    context: files
+    description: Review changes in CodeDiff
+    command: nvim -c "CodeDiff --exit-on-close"
     output: terminal

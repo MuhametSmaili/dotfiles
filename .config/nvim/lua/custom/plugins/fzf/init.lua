@@ -200,6 +200,9 @@ return {
 			grep = {
 				hidden = true,
 			},
+			git = {
+				bcommits = { follow = true },
+			},
 			previewers = {
 				codeaction = { toggle_behavior = "extend" },
 			},
