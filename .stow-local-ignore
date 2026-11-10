@@ -26,6 +26,7 @@ _darcs
 # Runtime state and local dependencies
 \.pi-subagents
 node_modules
+__pycache__
 
 ^/\.ssh/1Password$
 

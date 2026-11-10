@@ -12,6 +12,7 @@
 .config/git/config.local
 .config/tmux/plugins
 .zshrc.local
+__pycache__/
 
 .config/gh/hosts.yml
 

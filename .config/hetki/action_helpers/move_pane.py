@@ -1,54 +1,35 @@
 """Move the selected pane within its session or into another session."""
 
-import json
+from __future__ import annotations
+
 import shlex
-import subprocess
-import sys
+
+from _hetki import Request, emit, entrypoint, parse_invocation, tmux
 
 
-def tmux(request, *args):
-    result = subprocess.run(
-        ["tmux", "-S", request["context"]["server"]["socket"], *args],
-        text=True, capture_output=True, timeout=5, check=False,
-    )
-    if result.returncode:
-        raise RuntimeError(result.stderr.strip() or "tmux command failed")
-    return result.stdout.rstrip("\n")
+def source_location(request: Request) -> tuple[str, str, str]:
+    """Return the subject pane's (session_id, window_id, pane_id).
 
-
-def source_location(request):
+    Hetki resolves the subject when the flow opens and re-checks it before the
+    final run, so the IDs in the request are authoritative.
+    """
     subject = request["context"]["subject"]
-    rows = tmux(request, "list-panes", "-a", "-F", "#{session_id} #{window_id} #{pane_id}")
-    matches = []
-    for line in rows.splitlines():
-        session, window, pane = line.split()
-        if pane != subject["pane_id"]:
-            continue
-        if subject.get("session_id") and session != subject["session_id"]:
-            continue
-        if window != subject["window_id"]:
-            continue
-        matches.append((session, window, pane))
-    if not matches:
-        raise RuntimeError("The source pane moved or no longer exists; reopen the action")
-    if len(matches) != 1:
-        raise RuntimeError("The pane belongs to multiple sessions; select it in Hetki's session tree")
-    return matches[0]
+    if not subject.get("session_id"):
+        raise RuntimeError(
+            "The pane's session is unknown (it may belong to multiple sessions); "
+            "select it in Hetki's session tree"
+        )
+    return subject["session_id"], subject["window_id"], subject["pane_id"]
 
 
-def named_rows(request, command, *args, fields):
-    output = tmux(request, command, *args)
-    tokens = shlex.split(output)
+def named_rows(request: Request, command: str, *args: str, fields: int) -> list[list[str]]:
+    tokens = shlex.split(tmux(request, command, *args))
     if len(tokens) % fields:
         raise RuntimeError("Unexpected tmux list response")
     return [tokens[i:i + fields] for i in range(0, len(tokens), fields)]
 
 
-def emit(identifier, label, value):
-    print(json.dumps({"id": identifier, "label": label, "value": value}))
-
-
-def list_sessions(request):
+def list_sessions(request: Request) -> None:
     source, _, _ = source_location(request)
     for session, name in named_rows(
         request, "list-sessions", "-F", "#{session_id} name=#{q:session_name}", fields=2,
@@ -57,12 +38,12 @@ def list_sessions(request):
             emit(session, name.removeprefix("name="), {"session_id": session})
 
 
-def destination_session(request, source):
+def destination_session(request: Request, source: str) -> str:
     choice = request.get("steps", {}).get("session")
     return choice["value"]["session_id"] if choice else source
 
 
-def list_windows(request):
+def list_windows(request: Request) -> None:
     source, source_window, _ = source_location(request)
     session = destination_session(request, source)
     windows = named_rows(
@@ -77,7 +58,7 @@ def list_windows(request):
             })
 
 
-def invoking_client(request, destination):
+def invoking_client(request: Request, destination: str) -> str | None:
     invocation = request["context"].get("invocation")
     if not invocation or invocation["session_id"] == destination:
         return None
@@ -95,7 +76,7 @@ def invoking_client(request, destination):
     return matches[0]
 
 
-def preserve_client(request, client, session, pane, destination):
+def preserve_client(request: Request, client: str | None, session: str, pane: str, destination: str) -> None:
     if not client or request["context"]["invocation"]["session_id"] != session:
         return
 
@@ -105,20 +86,20 @@ def preserve_client(request, client, session, pane, destination):
         tmux(request, "switch-client", "-c", client, "-t", destination)
 
 
-def move(request):
+def move(request: Request) -> None:
     session, window, pane = source_location(request)
     choice = request["steps"]["window"]["value"]
+    new_window = choice.get("new_window", False)
     destination = destination_session(request, session)
     if choice["session_id"] != destination:
         raise RuntimeError("The selected window belongs to a different destination session")
-
-    if not choice.get("new_window", False) and choice["window_id"] == window:
+    if not new_window and choice["window_id"] == window:
         raise RuntimeError("Choose a different window")
 
     client = invoking_client(request, destination)
     preserve_client(request, client, session, pane, destination)
     source = f"{session}:{window}.{pane}"
-    if choice.get("new_window", False):
+    if new_window:
         window = tmux(
             request, "break-pane", "-d", "-P", "-F", "#{window_id}",
             "-s", source, "-t", destination + ":",
@@ -135,16 +116,13 @@ def move(request):
         tmux(request, "switch-client", "-c", client, "-t", destination)
 
 
-def main():
-    operations = {"sessions": list_sessions, "windows": list_windows, "move": move}
-    if len(sys.argv) != 2 or sys.argv[1] not in operations:
-        raise ValueError("Expected sessions, windows, or move")
-    operations[sys.argv[1]](json.load(sys.stdin))
+OPERATIONS = {"sessions": list_sessions, "windows": list_windows, "move": move}
+
+
+def main() -> None:
+    operation, request = parse_invocation(OPERATIONS)
+    operation(request)
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except (KeyError, ValueError, OSError, RuntimeError, subprocess.TimeoutExpired) as error:
-        print(str(error), file=sys.stderr)
-        sys.exit(1)
+    entrypoint(main)
