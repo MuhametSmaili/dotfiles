@@ -1,6 +1,6 @@
 ui:
   view: flat
-  scope: tracked
+  scope: all
   preview: false
   preview_width: 70
   height: "100%"

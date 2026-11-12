@@ -1,0 +1,136 @@
+#!/bin/sh
+# clip-display — make sure a private virtual display exists for the
+# clipboard, and print its name (e.g. ":99").
+#
+# Why: on Linux the clipboard lives inside an X display. A headless SSH
+# server has none, so kiro-cli / opencode cannot paste images there.
+# clip-upload puts each uploaded image on this display's clipboard, and
+# ~/.zshrc points DISPLAY at it.
+#
+# Security:
+#   * Xvfb runs with a secret cookie in ~/.Xauthority (mode 600) and no TCP
+#     listener, so other accounts can neither read nor replace the clipboard.
+#   * A display is only used when our own Xvfb holds it, so another user
+#     cannot grab the display number first and receive our images.
+#
+# Usage:  clip-display [:N]          (default :99)
+# Exit:   0 ok, display printed       3 display held by someone else
+#         2 bad argument              4 Xvfb / xauth / mcookie missing
+#                                     5 Xvfb did not start
+#
+# clip-upload sends this file along with its remote command, setting
+# CLIP_DISPLAY_LIB=1 so it only defines the functions. Keep it POSIX sh.
+
+# Prints the PID of our own Xvfb (started with -auth) on display number $1,
+# or fails if there is none.
+own_xvfb_pid() {
+    lockfile="/tmp/.X$1-lock"
+    [ -f "$lockfile" ] || return 1
+    [ "$(stat -c %u "$lockfile" 2>/dev/null)" = "$(id -u)" ] || return 1
+    pid="$(tr -dc 0-9 < "$lockfile" 2>/dev/null)"
+    [ -n "$pid" ] || return 1
+    kill -0 "$pid" 2>/dev/null || return 1
+    case "$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)" in
+        *Xvfb*" -auth "*) printf '%s\n' "$pid" ;;
+        *) return 1 ;;
+    esac
+}
+
+# Fails when someone else serves the abstract socket for display $1.
+# X clients try that socket first, so it must belong to our Xvfb ($2).
+abstract_socket_is_ours() {
+    command -v ss >/dev/null 2>&1 || return 0
+    line="$(ss -xlp 2>/dev/null | grep -F "@/tmp/.X11-unix/X$1 ")"
+    [ -z "$line" ] && return 0
+    case "$line" in
+        *"pid=$2,"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Starts our Xvfb on display $1 (":N"), replacing an old one of ours that
+# runs without a cookie. Caller holds the start lock.
+start_xvfb() {
+    disp="$1"
+    num="${disp#:}"
+    lockfile="/tmp/.X$num-lock"
+
+    if [ -e "$lockfile" ]; then
+        if [ "$(stat -c %u "$lockfile" 2>/dev/null)" != "$(id -u)" ]; then
+            echo "display $disp is held by another user; refusing to use it" >&2
+            return 3
+        fi
+        old="$(tr -dc 0-9 < "$lockfile" 2>/dev/null)"
+        if [ -n "$old" ] && kill "$old" 2>/dev/null; then
+            i=0
+            while [ "$i" -lt 20 ] && kill -0 "$old" 2>/dev/null; do
+                sleep 0.1
+                i=$((i + 1))
+            done
+        fi
+    fi
+
+    for tool in Xvfb xauth mcookie; do
+        if ! command -v "$tool" >/dev/null 2>&1; then
+            echo "'$tool' not installed (apt install xvfb xauth)" >&2
+            return 4
+        fi
+    done
+
+    # New cookie for every start; the file must stay private.
+    auth="${XAUTHORITY:-$HOME/.Xauthority}"
+    (umask 077 && touch "$auth") || return 4
+    chmod 600 "$auth" || return 4
+    xauth -q -f "$auth" add "$disp" . "$(mcookie)" || return 4
+
+    # 9>&- : Xvfb must not inherit the start lock, or it would hold it forever.
+    setsid nohup Xvfb "$disp" -auth "$auth" -nolisten tcp \
+        -screen 0 1280x800x24 </dev/null >/dev/null 2>&1 9>&- &
+
+    i=0
+    while [ "$i" -lt 50 ]; do
+        own_xvfb_pid "$num" >/dev/null && return 0
+        sleep 0.1
+        i=$((i + 1))
+    done
+    echo "Xvfb on $disp did not start" >&2
+    return 5
+}
+
+clip_display_ensure() {
+    disp="${1:-:99}"
+    case "$disp" in
+        :[0-9]|:[0-9][0-9]|:[0-9][0-9][0-9]) ;;
+        *) echo "invalid display '$disp'" >&2; return 2 ;;
+    esac
+    num="${disp#:}"
+
+    # Not running yet: start it. The lock stops shells that open at the same
+    # time (tmux restoring panes) from each writing a different cookie. It
+    # lives in $HOME, out of other users' reach, and is released when this
+    # process exits.
+    if ! own_xvfb_pid "$num" >/dev/null; then
+        if command -v flock >/dev/null 2>&1; then
+            exec 9>"$HOME/.clip-display.lock"
+            if ! flock -w 10 9; then
+                echo "timed out waiting for another clip-display" >&2
+                return 5
+            fi
+        fi
+        # Re-check: whoever held the lock may have just started it.
+        if ! own_xvfb_pid "$num" >/dev/null; then
+            start_xvfb "$disp" || return $?
+        fi
+    fi
+
+    pid="$(own_xvfb_pid "$num")" || return 5
+    if ! abstract_socket_is_ours "$num" "$pid"; then
+        echo "display $disp socket is held by another process; refusing to use it" >&2
+        return 3
+    fi
+    printf '%s\n' "$disp"
+}
+
+if [ -z "${CLIP_DISPLAY_LIB:-}" ]; then
+    clip_display_ensure "$@"
+fi

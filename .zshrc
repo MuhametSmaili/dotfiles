@@ -26,6 +26,18 @@ fi
 # System-specific configs
 [[ -f ~/.zshrc.local ]] && source ~/.zshrc.local
 
+# Headless Linux server over SSH: there is no desktop, so there is no
+# clipboard for kiro-cli / opencode to paste images from. clip-display
+# starts a private virtual display (the one clip-upload puts images on)
+# and prints its name, e.g. ":99"; we point DISPLAY at it.
+if [[ $OSTYPE == linux* && -n $SSH_CONNECTION && -z $DISPLAY ]] \
+    && command -v clip-display >/dev/null; then
+    if clip_display="$(clip-display 2>/dev/null)"; then
+        export DISPLAY="$clip_display"
+    fi
+    unset clip_display
+fi
+
 # ------------------------------------------------------------
 # Zsh Options & Environment Variables
 # ------------------------------------------------------------

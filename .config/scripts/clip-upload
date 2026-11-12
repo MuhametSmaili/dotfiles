@@ -23,6 +23,18 @@
 #   export CLIP_UPLOAD_dev_HOST="dev_env"
 #   export CLIP_UPLOAD_dev_DIR="~/inbox/screenshots"
 #   export CLIP_UPLOAD_dev_URL=""               # optional public URL prefix
+#   export CLIP_UPLOAD_dev_DISPLAY=":99"        # remote X display (default :99,
+#                                               # set to "" to skip remote clipboard)
+#
+# Remote clipboard: after the upload the image is also loaded into the
+# server's clipboard, so Ctrl+V inside kiro-cli / opencode on the server
+# pastes the image as if it were local. A headless server has no clipboard,
+# so clip-display (next to this script, sent along with the upload) starts
+# a private, cookie-authenticated Xvfb on demand; xclip then serves the
+# image from it. Needs `xclip`, `xvfb` and `xauth` on the server, and
+# DISPLAY pointing at it in shells there (~/.zshrc does this).
+# The local clipboard still receives the remote path, so Cmd+V pastes the
+# path and Ctrl+V on the server pastes the image.
 
 set -euo pipefail
 
@@ -184,10 +196,25 @@ PROFILE="${1:-${CLIP_UPLOAD_PROFILE:-dev}}"
 host_var="CLIP_UPLOAD_${PROFILE}_HOST"
 dir_var="CLIP_UPLOAD_${PROFILE}_DIR"
 url_var="CLIP_UPLOAD_${PROFILE}_URL"
+disp_var="CLIP_UPLOAD_${PROFILE}_DISPLAY"
 
 HOST="${!host_var:-}"
 DIR="${!dir_var:-~/inbox/screenshots}"
 URL="${!url_var:-}"
+# "-" (not ":-") so an explicitly empty value disables the remote clipboard.
+CLIP_DISPLAY="${!disp_var-:99}"
+
+# Also interpolated into the remote command, so keep it to ":<number>".
+[[ "$CLIP_DISPLAY" =~ ^(:[0-9]{1,3})?$ ]] \
+    || die "invalid display '$CLIP_DISPLAY' in ${disp_var} (expected e.g. :99, or empty)"
+
+# clip-display (lives next to this script) is sent along with the upload to
+# set up the server's headless clipboard.
+CLIP_DISPLAY_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/clip-display"
+if [[ -n "$CLIP_DISPLAY" && ! -r "$CLIP_DISPLAY_HELPER" ]]; then
+    warn "$CLIP_DISPLAY_HELPER not found; skipping remote clipboard"
+    CLIP_DISPLAY=""
+fi
 
 [[ -n "$HOST" ]] || die "Profile '$PROFILE' has no host. Set ${host_var} in ~/.zshrc.local."
 
@@ -256,31 +283,83 @@ upload_and_report() {
     # BatchMode=yes is important: when launched from skhd/Vicinae there is no
     # TTY, so an ssh prompt (passphrase, unknown host key) would block forever
     # while holding the lock. Better to fail loudly.
-    local ssh_opts=(-o BatchMode=yes -o ConnectTimeout=10)
+    # ClearAllForwardings: host entries often carry LocalForward lines; an
+    # upload must not try to (re)bind those ports.
+    local ssh_opts=(-o BatchMode=yes -o ConnectTimeout=10 -o ClearAllForwardings=yes)
 
-    # One connection instead of three (mkdir + scp + ln). The image arrives on
-    # stdin; it is written to a dot-prefixed temp name and renamed, so a reader
-    # following latest.png can never observe a half-written file.
-    local remote_script="set -e
+    # One connection instead of several (mkdir + scp + ln + clipboard). The
+    # image arrives on stdin; it is written to a dot-prefixed temp name and
+    # renamed, so a reader following latest.png can never observe a
+    # half-written file. Non-fatal problems are reported as "warn:" /
+    # "clip:" lines on stdout.
+    #
+    # The variable header is expanded locally (all values are validated);
+    # the body is a quoted heredoc so its $-expansions happen on the server.
+    local remote_body
+    read -r -d '' remote_body <<'EOF' || true
+set -e
 umask 022
-mkdir -p \"$REMOTE_DIR\"
-cat > \"$REMOTE_DIR/.$FILENAME.part\"
-mv \"$REMOTE_DIR/.$FILENAME.part\" \"$REMOTE_DIR/$FILENAME\"
-ln -sfn \"$REMOTE_DIR/$FILENAME\" \"$REMOTE_DIR/latest.png\" || exit 9"
+mkdir -p "$DIR_"
+cat > "$DIR_/.$NAME.part"
+mv "$DIR_/.$NAME.part" "$DIR_/$NAME"
+ln -sfn "$DIR_/$NAME" "$DIR_/latest.png" \
+  || echo "warn: could not update latest.png symlink"
 
-    local ssh_status=0
-    run_with_timeout 60 ssh "${ssh_opts[@]}" "$HOST" "$remote_script" < "$IMG" \
+if [ -n "$DISP" ]; then
+  if ! command -v xclip >/dev/null 2>&1; then
+    echo "clip: xclip not installed (apt install xclip)"
+  elif err=$(clip_display_ensure "$DISP" 2>&1 >/dev/null); then
+    # xclip forks to keep serving the selection, so every fd must be
+    # detached or the ssh session would wait for it forever.
+    if DISPLAY="$DISP" xclip -selection clipboard -t image/png -i "$DIR_/$NAME" \
+         </dev/null >/dev/null 2>&1; then
+      echo "clip: ok"
+    else
+      echo "clip: xclip failed"
+    fi
+  else
+    echo "clip: $err"
+  fi
+fi
+EOF
+
+    local header lib=""
+    header="DIR_=\"$REMOTE_DIR\"; NAME=\"$FILENAME\"; DISP=\"$CLIP_DISPLAY\""
+    if [[ -n "$CLIP_DISPLAY" ]]; then
+        lib="CLIP_DISPLAY_LIB=1"$'\n'"$(cat "$CLIP_DISPLAY_HELPER")"
+    fi
+
+    # Run under /bin/sh whatever the remote login shell is (often zsh):
+    # single-quote the whole script, escaping embedded ' as '\''. sed rather
+    # than ${var//…} because bash 3.2 (macOS) mangles that replacement.
+    local remote_script="$header"$'\n'"$lib"$'\n'"$remote_body" escaped
+    escaped="$(printf '%s' "$remote_script" | sed "s/'/'\\\\''/g")"
+    local remote_cmd="exec /bin/sh -c '$escaped'"
+
+    local ssh_status=0 out
+    out="$(run_with_timeout 60 ssh "${ssh_opts[@]}" "$HOST" "$remote_cmd" < "$IMG")" \
         || ssh_status=$?
 
     case "$ssh_status" in
         0) ;;
-        9) warn "uploaded, but could not update latest.png symlink" ;;
         124) die "upload to $HOST timed out after 60s (is your SSH agent waiting for approval?)" ;;
         255)
             die "ssh could not connect to '$HOST'. If this host is new, run 'ssh $HOST true' once interactively to accept the key / unlock your passphrase."
             ;;
         *) die "upload to $HOST:$DIR/$FILENAME failed (exit $ssh_status)" ;;
     esac
+
+    local clip_note="" line
+    while IFS= read -r line; do
+        case "$line" in
+            "clip: ok") clip_note=" · Ctrl+V on ${HOST} pastes it" ;;
+            "clip: "*)
+                warn "remote clipboard not set: ${line#clip: }"
+                clip_note=" · remote clipboard failed: ${line#clip: }"
+                ;;
+            "warn: "*) warn "${line#warn: }" ;;
+        esac
+    done <<< "$out"
 
     local remote_path="$DIR/$FILENAME" result
     if [[ -n "$URL" ]]; then
@@ -291,7 +370,7 @@ ln -sfn \"$REMOTE_DIR/$FILENAME\" \"$REMOTE_DIR/latest.png\" || exit 9"
     fi
 
     copy_to_local_clipboard "$result"
-    notify "Uploaded ✓" "$HOST:$remote_path"
+    notify "Uploaded ✓" "$HOST:$remote_path${clip_note}"
     printf '%s\n' "$result"
 }
 
