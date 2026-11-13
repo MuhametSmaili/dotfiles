@@ -33,6 +33,10 @@
     "sound": true
   },
   "theme": {
-    "name": "rosepine"
+    "name": "system",
+    "mode": "system"
+  },
+  "prompt": {
+    "image_preview": true
   }
 }

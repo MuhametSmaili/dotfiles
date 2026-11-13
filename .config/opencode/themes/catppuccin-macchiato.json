@@ -65,10 +65,7 @@
       "dark": "macOverlay2",
       "light": "macOverlay2"
     },
-    "background": {
-      "dark": "none",
-      "light": "none"
-    },
+    "background": "transparent",
     "backgroundPanel": {
       "dark": "macMantle",
       "light": "macMantle"
