@@ -1,323 +1,36 @@
 #!/usr/bin/env bash
+# Runs the fzp binary, rebuilding it from $XDG_CONFIG_HOME/fzp/src when any
+# source file is newer. See `fzp --help`.
 set -euo pipefail
 
-CHANNELS_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/fzp/channels.d"
-FZP_HEIGHT="${FZP_HEIGHT:-100%}"
-FZP_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/fzp"
-FZP_PARSER_BIN="$FZP_CACHE_DIR/fzp-yaml-parser"
-FZP_PARSER_SRC="${XDG_CONFIG_HOME:-$HOME/.config}/fzp/parser"
+src="${XDG_CONFIG_HOME:-$HOME/.config}/fzp/src"
+bin="${XDG_CACHE_HOME:-$HOME/.cache}/fzp/fzp"
 
-die() { printf 'error: %s\n' "$*" >&2; exit 1; }
-
-# Temporary files are tracked at script level. A trap on a function-local
-# variable does not work, because the EXIT trap runs after the function returns
-# and the variable is then out of scope.
-FZP_TMP_SPEC=""
-FZP_TMP_SCOPE=""
-
-cleanup_tmp() {
-  [[ -n "$FZP_TMP_SPEC" ]] && rm -f "$FZP_TMP_SPEC"
-  [[ -n "$FZP_TMP_SCOPE" ]] && rm -f "$FZP_TMP_SCOPE"
-  return 0
-}
-trap cleanup_tmp EXIT INT TERM
-
-check_core_tools() {
-  command -v fzf >/dev/null 2>&1 || die "missing required tool: fzf"
-
-  if [[ -x "$FZP_PARSER_BIN" ]]; then
-    return
-  fi
-
-  [[ -f "$FZP_PARSER_SRC/main.go" ]] || die "missing parser source: $FZP_PARSER_SRC/main.go"
-
-  if command -v go >/dev/null 2>&1; then
-    return
-  fi
-
-  if command -v mise >/dev/null 2>&1; then
-    if mise x -- go version >/dev/null 2>&1; then
-      return
-    fi
-  fi
-
-  die "missing Go toolchain for YAML parser build (install go or configure mise go)"
+stale() {
+	[[ ! -x "$bin" ]] || [[ -n "$(find "$src" \( -name '*.go' -o -name 'go.*' \) -newer "$bin" -print -quit)" ]]
 }
 
-ensure_yaml_parser() {
-  # Rebuild when the binary is missing or older than any source file, otherwise
-  # an edit to main.go would never take effect.
-  if [[ -x "$FZP_PARSER_BIN" ]]; then
-    local newer
-    newer="$(find "$FZP_PARSER_SRC" -name '*.go' -newer "$FZP_PARSER_BIN" -print -quit 2>/dev/null || true)"
-    [[ -z "$newer" ]] && return 0
-  fi
+build() {
+	local go=(go)
+	if ! command -v go >/dev/null 2>&1; then
+		command -v mise >/dev/null 2>&1 || {
+			echo "fzp: Go is required to build $src" >&2
+			exit 1
+		}
+		go=(mise x -- go)
+	fi
 
-  if command -v go >/dev/null 2>&1 && [[ -f "$FZP_PARSER_SRC/main.go" ]]; then
-    mkdir -p "$FZP_CACHE_DIR"
-    if (cd "$FZP_PARSER_SRC" && go build -o "$FZP_PARSER_BIN" .) >/dev/null 2>&1; then
-      return 0
-    fi
-  fi
-
-  if command -v mise >/dev/null 2>&1 && [[ -f "$FZP_PARSER_SRC/main.go" ]]; then
-    mkdir -p "$FZP_CACHE_DIR"
-    if (cd "$FZP_PARSER_SRC" && mise x -- go build -o "$FZP_PARSER_BIN" .) >/dev/null 2>&1; then
-      return 0
-    fi
-  fi
-
-  return 1
+	mkdir -p "$(dirname "$bin")"
+	# Build to a temporary path, so a failed build keeps the previous binary
+	# and a concurrent fzp never runs a half-written one.
+	(cd "$src" && "${go[@]}" build -o "$bin.tmp" .) && mv -f "$bin.tmp" "$bin"
 }
 
-usage() {
-  cat <<EOF
-Usage: fzp [channel] [--query QUERY] [--scope-file FILE]
-
-  fzp                 pick a channel interactively
-  fzp files           run files channel
-  fzp --list          list channels
-
-Environment:
-  FZP_HEIGHT=100%     default picker height
-
-Internal helpers:
-  fzp _confirm-run "prompt" "command"
-  fzp _scoped-rg "query"
-  fzp _scope-and-run <channel> <items...>
-
-Channels dir: $CHANNELS_DIR
-EOF
-}
-
-channel_catalog_tsv() {
-  ensure_yaml_parser || die "failed to build YAML parser from $FZP_PARSER_SRC"
-  "$FZP_PARSER_BIN" catalog-tsv "$CHANNELS_DIR"
-}
-
-list_channels() {
-  channel_catalog_tsv | cut -f1
-}
-
-check_requirements() {
-  local ch="$1"
-  shift
-  local -a missing=()
-  local dep
-
-  for dep in "$@"; do
-    [[ -n "$dep" ]] || continue
-    command -v "$dep" >/dev/null 2>&1 || missing+=("$dep")
-  done
-
-  if [[ ${#missing[@]} -gt 0 ]]; then
-    die "channel '$ch' missing dependencies: ${missing[*]}"
-  fi
-}
-
-pick_channel() {
-  local query="${1:-}"
-  local selected=""
-
-  selected="$(
-    channel_catalog_tsv | \
-      fzf \
-        --height "$FZP_HEIGHT" \
-        --prompt "channel> " \
-        --query "$query" \
-        --delimiter $'\t' \
-        --with-nth=1,2 \
-        --header "pick a channel" \
-        --preview 'bat --color=always --style=plain {3} 2>/dev/null || cat {3}'
-  )" || return 0
-
-  printf '%s\n' "${selected%%$'\t'*}"
-}
-
-# Runs the channel source. Reads source_cmd, source_cwd and env_args from the
-# caller's scope.
-emit_source() {
-  if [[ -n "$source_cwd" ]]; then
-    if [[ ${#env_args[@]} -gt 0 ]]; then
-      (
-        cd "$source_cwd"
-        env "${env_args[@]}" bash -lc "$source_cmd"
-      )
-    else
-      (
-        cd "$source_cwd"
-        bash -lc "$source_cmd"
-      )
-    fi
-  elif [[ ${#env_args[@]} -gt 0 ]]; then
-    env "${env_args[@]}" bash -lc "$source_cmd"
-  else
-    bash -lc "$source_cmd"
-  fi
-}
-
-confirm_run() {
-  local prompt="$1"
-  local cmd="$2"
-  local answer=""
-
-  if [[ -t 1 && -e /dev/tty ]]; then
-    printf '%s [y/N] ' "$prompt" > /dev/tty
-    read -r answer < /dev/tty || return 1
-    [[ "$answer" =~ ^[Yy]$ ]] || return 1
-  fi
-
-  bash -lc "$cmd"
-}
-
-scoped_rg() {
-  local query="${1:-}"
-
-  if [[ -n "${FZP_SCOPE_FILE:-}" && -f "${FZP_SCOPE_FILE}" ]]; then
-    if [[ ! -s "$FZP_SCOPE_FILE" ]]; then
-      return 0
-    fi
-
-    while IFS= read -r path; do
-      [[ -n "$path" ]] || continue
-      printf '%s\0' "$path"
-    done < "$FZP_SCOPE_FILE" | xargs -0 rg --color=always --line-number --no-heading --smart-case "$query" 2>/dev/null || true
-    return
-  fi
-
-  rg --color=always --line-number --no-heading --smart-case "$query" . 2>/dev/null || true
-}
-
-scope_and_run() {
-  local target="$1"
-  shift
-
-  [[ -n "$target" ]] || die "_scope-and-run requires target channel"
-
-  if [[ $# -eq 0 ]]; then
-    fzp "$target"
-    return
-  fi
-
-  local scope_file
-  FZP_TMP_SCOPE="$(mktemp "${TMPDIR:-/tmp}/fzp-scope.XXXXXX")"
-  scope_file="$FZP_TMP_SCOPE"
-  printf '%s\n' "$@" > "$scope_file"
-
-  fzp --scope-file "$scope_file" "$target"
-}
-
-run_channel() {
-  local ch="$1"
-  local query="${2:-}"
-  local scope_file="${3:-}"
-  local spec
-  FZP_TMP_SPEC="$(mktemp "${TMPDIR:-/tmp}/fzp-spec.XXXXXX")"
-  spec="$FZP_TMP_SPEC"
-
-  ensure_yaml_parser || die "failed to build YAML parser from $FZP_PARSER_SRC"
-
-  if ! "$FZP_PARSER_BIN" fzf-args "$ch" "$CHANNELS_DIR" "$FZP_HEIGHT" "$query" "$scope_file" > "$spec"; then
-    rm -f "$spec"
-    exit 1
-  fi
-
-  # One record is a tag and a value, each terminated by NUL. The parser has
-  # already assembled the fzf arguments, so no per-field subprocess is needed.
-  local -a args=() requires=() env_args=()
-  local source_cmd="" source_cwd=""
-  local tag val
-  while IFS= read -r -d '' tag && IFS= read -r -d '' val; do
-    case "$tag" in
-      arg) args+=("$val") ;;
-      req) requires+=("$val") ;;
-      src_cmd) source_cmd="$val" ;;
-      src_cwd) source_cwd="$val" ;;
-      env) env_args+=("$val") ;;
-    esac
-  done < "$spec"
-  rm -f "$spec"
-
-  if [[ ${#requires[@]} -gt 0 ]]; then
-    check_requirements "$ch" "${requires[@]}"
-  fi
-
-  export FZP_SCOPE_FILE="$scope_file"
-
-  set +e
-  emit_source | fzf "${args[@]}"
-  local status=$?
-  set -e
-
-  case "$status" in
-    0|1|130) return 0 ;;
-    *) return "$status" ;;
-  esac
-}
-
-if [[ "${1:-}" == "_confirm-run" ]]; then
-  shift
-  [[ $# -eq 2 ]] || die "_confirm-run expects exactly 2 args"
-  confirm_run "$1" "$2"
-  exit $?
+if stale; then
+	build || {
+		echo "fzp: build failed" >&2
+		exit 1
+	}
 fi
 
-if [[ "${1:-}" == "_scoped-rg" ]]; then
-  shift
-  scoped_rg "${1:-}"
-  exit 0
-fi
-
-if [[ "${1:-}" == "_scope-and-run" ]]; then
-  shift
-  [[ $# -ge 1 ]] || die "_scope-and-run expects channel [items...]"
-  scope_and_run "$@"
-  exit $?
-fi
-
-check_core_tools
-
-channel=""
-query=""
-scope_file="${FZP_SCOPE_FILE:-}"
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --list)
-      list_channels
-      exit 0
-      ;;
-    --query)
-      shift
-      [[ $# -gt 0 ]] || die "--query requires a value"
-      query="$1"
-      ;;
-    --scope-file)
-      shift
-      [[ $# -gt 0 ]] || die "--scope-file requires a value"
-      scope_file="$1"
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    *)
-      if [[ -z "$channel" ]]; then
-        channel="$1"
-      else
-        die "unexpected argument: $1"
-      fi
-      ;;
-  esac
-  shift
-done
-
-[[ -d "$CHANNELS_DIR" ]] || die "channels dir not found: $CHANNELS_DIR"
-
-if [[ -z "$channel" ]]; then
-  channel="$(pick_channel "$query")"
-fi
-
-[[ -n "$channel" ]] || exit 0
-
-run_channel "$channel" "$query" "$scope_file"
+exec "$bin" "$@"
