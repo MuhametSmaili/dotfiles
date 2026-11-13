@@ -11,8 +11,8 @@ brew install --cask y3owk1n/tap/mimi jackielii/tap/skhd-zig
 ```
 
 1. Link this directory to `~/.config/mimi` using your dotfiles/Stow setup.
-   Python 3 must be available on Mimi's service PATH; Space history uses
-   `/usr/bin/python3`. Adjust `settings.service_path` for another machine.
+   `layout.py` needs a stdlib-only `python3` on Mimi's default service PATH
+   (`/opt/homebrew/bin` or `/usr/bin`); no per-machine paths are configured.
 2. Grant **Mimi and skhd Accessibility** in System Settings → Privacy & Security.
    If terminal commands are denied, check the terminal's permission too.
 3. Create nine native Spaces. Disable automatic Space reordering and enable
@@ -32,7 +32,6 @@ Validate and enable both services at login:
 mimi config validate
 mimi services install
 skhd --start-service
-/usr/bin/python3 -B ~/.config/mimi/space_history.py sync
 ```
 
 ## Shortcuts
@@ -50,7 +49,7 @@ skhd --start-service
 | Option+E                 | Toggle split of the focused window: vertical ↔ horizontal |
 | Option+T                 | Float and center at half-size; repeat to tile             |
 | Option+F                 | Fill current Space; repeat to restore tiling              |
-| Option+Shift+P/O         | Move window to next/previous display                      |
+| Option+Shift+P/N         | Move window to next/previous display                      |
 
 Cmd+Tab, Cmd+H, and Ctrl+Left/Right remain native. There are no shortcut modes.
 Option+F is zoom within the current Space, not macOS fullscreen; it applies to
@@ -59,13 +58,13 @@ tiled windows and exits when another tiled window gains focus.
 ## Configuration
 
 - `config.toml` — settings, app routing, and borders. Current defaults: 10-point
-  gaps, no animations, and a focused-only **1-point white border at 50% opacity**.
+  gaps, no animations, and a focused-only **2-point white border at 50% opacity**.
 - `skhdrc` — shortcuts, loaded through the shared skhd entry point.
 - `layout.py` — resident Python layout. BSP is preserved when switching to stack
-  and back. Drag-to-swap/resize is not implemented.
-- `space_history.py` — Space history from Mimi's hook JSON, without polling. Visit two
-  Spaces before using Option+Tab. History is single-display; after manually
-  reordering/deleting Spaces, clear `~/.local/state/mimi/space-history.json`.
+  and back. Splits are 50/50; there is no resizing or drag-to-swap.
+- Option+Tab uses Mimi's built-in `mimi action space recent` (v0.22.0+). The
+  daemon keeps the history in memory, so after a restart switch Space once
+  before using it. Moving focus to another display also counts as a switch.
 
 App routing: terminals → 1, Brave → 2, files/notes → 3, chat → 4, mail → 5,
 Keynote → 8. Rules can move existing windows at startup or after rule changes.
@@ -83,5 +82,5 @@ skhd --reload
 
 Saving `config.toml` also reloads it automatically. After editing the resident
 `layout.py`, use `mimi services restart`; restarting resets remembered per-Space
-layouts, window order, and ratios. Test Space switching directly if needed with
+layouts, window order, and split directions. Test Space switching directly if needed with
 `mimi action space 2`—a successful doctor check alone does not prove switching.

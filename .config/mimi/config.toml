@@ -5,8 +5,6 @@
 [settings]
 log_file = "~/.local/state/mimi/mimi.log"
 log_level = "info"
-# Include mise's Python shims in the service environment.
-service_path = "/Users/muhametsmaili/.local/share/mise/shims:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 
 [systray]
 enabled = true
@@ -22,11 +20,6 @@ placement = "outside"
 active_color = "#80ffffff" # white, about 50% opacity (AARRGGBB)
 inactive_color = "#00414141"
 
-[hooks]
-on_workspace_changed = [
-  { run = "/usr/bin/python3 -B ~/.config/mimi/space_history.py record" },
-]
-
 [tiling]
 enabled = true
 layout = "python3 -B ~/.config/mimi/layout.py"
@@ -34,7 +27,7 @@ layout_mode = "resident"
 debounce_ms = 50
 timeout_secs = 5
 gap = 10
-# This layout implements keyboard resizing, not drag-to-swap/resize.
+# This layout has no resize or drag-to-swap; splits are always 50/50.
 relayout_on_drag = false
 
 [tiling.animation]

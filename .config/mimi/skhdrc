@@ -39,8 +39,9 @@ alt - e : /opt/homebrew/bin/mimi tiling cmd togglesplit
 alt - t : /opt/homebrew/bin/mimi tiling cmd togglefloat
 alt - f : /opt/homebrew/bin/mimi tiling cmd togglemax
 
-# Last visited native Space (Cmd+Tab stays native app switching).
-alt - tab : /usr/bin/python3 -B ~/.config/mimi/space_history.py toggle
+# Last visited native Space (Cmd+Tab stays native app switching). The daemon
+# tracks history in memory; after a restart, switch once before this works.
+alt - tab : /opt/homebrew/bin/mimi action space recent
 
 # Available when another display is connected.
 shift + alt - p : /opt/homebrew/bin/mimi action move_window_to_display next

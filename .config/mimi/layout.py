@@ -70,7 +70,8 @@ class Geometry(NamedTuple):
 
 def render(request: dict) -> dict:
     """Render one request, mutating its state in place; no cross-request caches."""
-    state = normalise_state(request.get("state") or {})
+    state = request.get("state") or {}
+    state.setdefault("mode", "bsp")
     command = Command.from_event(request.get("event", {}))
     windows = request["windows"]
     focused = focused_window(windows, request.get("focused", -1))
@@ -84,9 +85,7 @@ def render(request: dict) -> dict:
     if state["mode"] == "stack":
         frames, focus = render_stack(state, order, focused, command, geometry)
     else:
-        tree, frames, focus = render_bsp(
-            tree, by_window, order, focused, command, geometry
-        )
+        tree, frames, focus = render_bsp(tree, by_window, focused, command, geometry)
     state["tree"] = tree
 
     apply_maximise(state, frames, focused, command, geometry.box)
@@ -98,15 +97,6 @@ def render(request: dict) -> dict:
 
 
 # -- State and window reconciliation -------------------------------------------
-
-
-def normalise_state(state: dict) -> dict:
-    """Migrate legacy accordion state without discarding its BSP tree."""
-    state.setdefault("mode", "bsp")
-    if state["mode"] == "accordion":
-        state["mode"] = "stack"
-    state.pop("orientation", None)
-    return state
 
 
 def focused_window(windows: list[dict], index: int) -> int | None:
@@ -158,14 +148,13 @@ def update_floating(state: dict, focused: int | None,
 def update_layout_mode(state: dict, command: Command) -> None:
     if command.name != "layout" or not command.args:
         return
-    mode = command.args[0]
-    if mode in ("bsp", "stack", "accordion"):
-        state["mode"] = "stack" if mode == "accordion" else mode
+    if command.args[0] in ("bsp", "stack"):
+        state["mode"] = command.args[0]
 
 
 def sync_tree(tree: dict | None, order: list[int], focused: int | None,
               geometry: Geometry) -> tuple[dict | None, dict[int, dict]]:
-    """Reconcile the tree and build an index valid until a stack move or swap."""
+    """Reconcile the tree and build an index valid until a swap."""
     tree = prune_tree(tree, set(order))
     by_window = {number: leaf for leaf in leaves(tree) for number in leaf["windows"]}
     for number in order:
@@ -200,9 +189,8 @@ def render_stack(state: dict, order: list[int], focused: int | None,
     """Cycle or swap workspace-wide stack order, then overlap all tiled windows."""
     focus = None
     directional = command.name in ("focus", "swap") and command.direction in DIRECTIONS
-    cyclic = command.name in ("next", "prev")
-    if focused in order and (directional or cyclic):
-        step = -1 if command.direction in ("left", "up") or command.name == "prev" else 1
+    if focused in order and directional:
+        step = -1 if command.direction in ("left", "up") else 1
         other = cycle_window(order, focused, step)
         if command.name == "swap":
             swap_positions(state["order"], focused, other)
@@ -213,69 +201,46 @@ def render_stack(state: dict, order: list[int], focused: int | None,
     return frames, focus
 
 
-def render_bsp(tree: dict | None, by_window: dict, order: list[int],
-               focused: int | None, command: Command,
+def render_bsp(tree: dict | None, by_window: dict, focused: int | None,
+               command: Command,
                geometry: Geometry) -> tuple[dict | None, dict[int, dict], int | None]:
     """Apply one BSP command and calculate final geometry only when needed."""
     frames = None
     focus = None
-    held = by_window.get(focused)
-    if command.name in ("togglesplit", "ratio"):
-        update_split(tree, focused, command)
-    elif command.name == "balance":
-        balance_tree(tree)
-    elif command.name in ("focus", "swap", "stack") and command.args and held:
-        tree, frames, focus = apply_directional_command(
-            tree, by_window, order, focused, command, geometry
+    if command.name == "togglesplit":
+        toggle_split(tree, focused)
+    elif command.name in ("focus", "swap") and command.args and focused in by_window:
+        frames, focus = apply_directional_command(
+            tree, by_window, focused, command, geometry
         )
-    elif command.name in ("next", "prev") and held:
-        step = 1 if command.name == "next" else -1
-        focus = cycle_window(held["windows"], focused, step)
     if frames is None:
         frames = geometry.frames(tree)
     return tree, frames, focus
 
 
-def update_split(tree: dict | None, focused: int | None, command: Command) -> None:
-    """Adjust the focused leaf's parent split, leaving root leaves unchanged."""
+def toggle_split(tree: dict | None, focused: int | None) -> None:
+    """Flip the focused leaf's parent split, leaving a root leaf unchanged."""
     location = locate_leaf(tree, focused)
-    if location is None:
+    if location is None or location[1] is None:
         return
-    _, parent, side = location
-    if parent is None:
-        return
-    if command.name == "togglesplit":
-        parent["axis"] = "vertical" if parent["axis"] == "horizontal" else "horizontal"
-    elif command.name == "ratio" and command.args:
-        sign = 1 if side == "a" else -1
-        ratio = parent["ratio"] + float(command.args[0]) * sign
-        parent["ratio"] = max(0.1, min(0.9, ratio))
+    parent = location[1]
+    parent["axis"] = "vertical" if parent["axis"] == "horizontal" else "horizontal"
 
 
-def apply_directional_command(tree: dict, by_window: dict, order: list[int],
-                              focused: int, command: Command,
-                              geometry: Geometry) -> tuple[dict | None, dict | None, int | None]:
-    """Return (tree, reusable frames, focus); None frames mean geometry changed."""
+def apply_directional_command(tree: dict, by_window: dict, focused: int,
+                              command: Command,
+                              geometry: Geometry) -> tuple[dict | None, int | None]:
+    """Return (reusable frames, focus); None frames mean geometry changed."""
     frames = geometry.frames(tree)
-    source = by_window[focused]
     other = neighbour(tree, frames, focused, command.direction)
     target = by_window.get(other)
-    if target is not None:
-        if command.name == "focus":
-            return tree, frames, target["active"]
-        if command.name == "swap":
-            swap_stacks(source, target)
-        else:
-            tree = move_to_stack(tree, source, target, focused, order)
-        # Moving members can change minimum sizes, even if the splits are unchanged.
-        # The caller must also discard the old by_window index after this command.
-        return tree, None, None
-
-    if command.name == "focus" and command.direction in ("up", "down"):
-        if len(source["windows"]) > 1:
-            step = -1 if command.direction == "up" else 1
-            return tree, frames, cycle_window(source["windows"], focused, step)
-    return tree, frames, None
+    if target is None:
+        return frames, None
+    if command.name == "focus":
+        return frames, target["active"]
+    swap_stacks(by_window[focused], target)
+    # Swapping can change minimum sizes, even though the splits are unchanged.
+    return None, None
 
 
 def cycle_window(members: list[int], focused: int, step: int) -> int:
@@ -293,14 +258,6 @@ def swap_stacks(source: dict, target: dict) -> None:
     """BSP swap moves entire leaf stacks, not only their active windows."""
     source["windows"], target["windows"] = target["windows"], source["windows"]
     source["active"], target["active"] = target["active"], source["active"]
-
-
-def move_to_stack(tree: dict, source: dict, target: dict,
-                  focused: int, order: list[int]) -> dict | None:
-    source["windows"].remove(focused)
-    target["windows"].append(focused)
-    target["active"] = focused
-    return prune_tree(tree, set(order))
 
 
 def apply_maximise(state: dict, frames: dict, focused: int | None,
@@ -538,16 +495,6 @@ def insert_window(tree: dict | None, target: int | None,
         return branch, leaf
     parent[side] = branch
     return tree, leaf
-
-
-def balance_tree(tree: dict | None) -> None:
-    pending = [tree] if tree is not None else []
-    while pending:
-        node = pending.pop()
-        if "windows" not in node:
-            node["ratio"] = 0.5
-            pending.append(node["b"])
-            pending.append(node["a"])
 
 
 # -- Output and resident JSON-lines entry point --------------------------------

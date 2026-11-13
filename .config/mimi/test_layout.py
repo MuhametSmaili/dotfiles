@@ -53,13 +53,6 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(set(frames(out)), {1, 2, 3})
         self.assertNotEqual(frames(first)[1], frames(out)[1])
 
-    def test_ratio_and_balance(self):
-        first = render(desktop((1, 2)))
-        changed = render(desktop((1, 2), state=first["state"], command=("ratio", "0.05")))
-        self.assertGreater(frames(changed)[1]["width"], frames(first)[1]["width"])
-        reset = render(desktop((1, 2), state=changed["state"], command=("balance",)))
-        self.assertEqual(frames(reset), frames(first))
-
     def test_swap_and_split(self):
         first = render(desktop((1, 2)))
         swapped = render(desktop((1, 2), state=first["state"], command=("swap", "right")))
@@ -72,15 +65,6 @@ class LayoutTests(unittest.TestCase):
         first = render(desktop((1, 2)))
         out = render(desktop((1, 2), state=first["state"], command=("focus", "right")))
         self.assertEqual(out["focus"], 2)
-
-    def test_stack_and_cycle(self):
-        first = render(desktop((1, 2)))
-        stack = render(desktop((1, 2), state=first["state"], command=("stack", "right")))
-        self.assertEqual(frames(stack)[1], frames(stack)[2])
-        cycle = render(desktop((1, 2), state=stack["state"], command=("next",)))
-        self.assertEqual(cycle["focus"], 2)
-        fallback = render(desktop((1, 2), state=stack["state"], command=("focus", "down")))
-        self.assertEqual(fallback["focus"], 2)
 
     def test_whole_space_stack_and_return_preserve_bsp(self):
         first = render(desktop())
@@ -102,14 +86,6 @@ class LayoutTests(unittest.TestCase):
         portrait = render(desktop(command=("layout", "stack"), size=(800, 1400)))
         for rect in frames(portrait).values():
             self.assertEqual(rect, {"x": 10, "y": 35, "width": 780, "height": 1380})
-
-    def test_legacy_accordion_becomes_stack(self):
-        stack = render(desktop(command=("layout", "accordion")))
-        self.assertEqual(stack["state"]["mode"], "stack")
-        old = dict(stack["state"], mode="accordion", orientation="vertical")
-        migrated = render(desktop(state=old))
-        self.assertEqual(migrated["state"], stack["state"])
-        self.assertEqual(frames(migrated), frames(stack))
 
     def test_whole_space_stack_handles_window_changes_and_floating(self):
         stack = render(desktop(command=("layout", "stack")))
@@ -160,17 +136,17 @@ class LayoutTests(unittest.TestCase):
 
     def test_maximise_round_trip_preserves_layout_and_other_windows(self):
         first = render(desktop((1, 2)))
-        resized = render(desktop((1, 2), state=first["state"], command=("ratio", "0.1")))
+        split = render(desktop((1, 2), state=first["state"], command=("togglesplit",)))
         for _ in range(3):
-            zoomed = render(desktop((1, 2), state=resized["state"], command=("togglemax",)))
+            zoomed = render(desktop((1, 2), state=split["state"], command=("togglemax",)))
             self.assertEqual(frames(zoomed)[1], {"x": 10, "y": 35, "width": 1420, "height": 880})
-            self.assertEqual(frames(zoomed)[2], frames(resized)[2])
-            self.assertEqual(zoomed["state"]["tree"], resized["state"]["tree"])
+            self.assertEqual(frames(zoomed)[2], frames(split)[2])
+            self.assertEqual(zoomed["state"]["tree"], split["state"]["tree"])
             settled = render(desktop((1, 2), state=zoomed["state"]))
             self.assertEqual(frames(settled), frames(zoomed))
             restored = render(desktop((1, 2), state=settled["state"], command=("togglemax",)))
-            self.assertEqual(frames(restored), frames(resized))
-            self.assertEqual(restored["state"], resized["state"])
+            self.assertEqual(frames(restored), frames(split))
+            self.assertEqual(restored["state"], split["state"])
 
     def test_maximise_native_tab_replacement_and_close(self):
         zoomed = render(desktop(command=("togglemax",)))
