@@ -1,7 +1,6 @@
 metadata:
   description: Git commit log
-  requires:
-    - git
+  requires: [git]
 
 source:
   command: git log --oneline --all --decorate --color=always -200
@@ -16,12 +15,8 @@ ui:
   header: git log
 
 navigation:
-  ctrl-o:
-    channel: files
-    label: files
-  ctrl-t:
-    channel: git-branches
-    label: branches
+  ctrl-o: {channel: files, label: files}
+  ctrl-t: {channel: git-branches, label: branches}
 
 actions:
   enter:

@@ -1,4 +1,4 @@
-module fzp-parser
+module fzp
 
 go 1.25.0
 

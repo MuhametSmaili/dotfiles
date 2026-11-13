@@ -1,0 +1,26 @@
+metadata:
+  description: Open an existing worktree
+  group: pane
+  target: required
+  requires: [git]
+
+steps:
+  - select: worktree
+    title: Choose another worktree of this pane's repository
+    source:
+      builtin: git.worktrees
+      with: {exclude_current: true}
+
+  - select: place
+    title: Open shell in…
+    items:
+      - {id: window-focus, label: New window and focus, kind: window, focus: true}
+      - {id: horizontal-focus, label: Split side by side and focus, kind: horizontal, focus: true}
+      - {id: vertical-focus, label: Split stacked and focus, kind: vertical, focus: true}
+      - {id: window, label: New window (in background), kind: window, focus: false}
+      - {id: horizontal, label: Split side by side (keep focus), kind: horizontal, focus: false}
+      - {id: vertical, label: Split stacked (keep focus), kind: vertical, focus: false}
+
+run:
+  command: |
+    "$FZP_CONFIG_DIR/lib/open-shell.sh" "$FZP_STEP_WORKTREE_PATH" "$FZP_STEP_WORKTREE_LABEL"

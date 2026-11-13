@@ -1,7 +1,6 @@
 metadata:
   description: Running docker containers
-  requires:
-    - docker
+  requires: [docker]
 
 source:
   command: docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}'
@@ -15,9 +14,7 @@ ui:
   header: docker containers
 
 navigation:
-  ctrl-i:
-    channel: docker-images
-    label: images
+  ctrl-i: {channel: docker-images, label: images}
 
 actions:
   ctrl-l:

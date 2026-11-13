@@ -1,0 +1,31 @@
+metadata:
+  description: Remove a worktree (the branch is kept)
+  group: pane
+  target: required
+  requires: [git]
+
+steps:
+  - select: worktree
+    title: Choose a worktree to remove · the branch is kept
+    source:
+      builtin: git.worktrees
+      with: {exclude_current: true, exclude_main: true, exclude_locked: true}
+
+run:
+  confirm: "Remove $FZP_STEP_WORKTREE_PATH? Uncommitted changes or open panes block removal"
+  # No --force: Git refuses worktrees with uncommitted or untracked changes.
+  command: |
+    set -euo pipefail
+    root=$(cd "$FZP_STEP_WORKTREE_PATH" && pwd -P)
+    inside=""
+    while read -r pane cwd; do
+      cwd=$(cd "$cwd" 2>/dev/null && pwd -P) || continue
+      if [[ "$cwd" == "$root" || "$cwd" == "$root"/* ]]; then
+        inside+="$pane "
+      fi
+    done < <(tmux list-panes -a -F '#{pane_id} #{pane_current_path}')
+    if [[ -n "$inside" ]]; then
+      echo "panes are still using this worktree: $inside" >&2
+      exit 1
+    fi
+    git worktree remove "$FZP_STEP_WORKTREE_PATH"

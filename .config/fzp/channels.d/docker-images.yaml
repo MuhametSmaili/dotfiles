@@ -1,7 +1,6 @@
 metadata:
   description: Docker images
-  requires:
-    - docker
+  requires: [docker]
 
 source:
   command: docker images --format '{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.ID}}'
@@ -14,9 +13,7 @@ ui:
   header: docker images
 
 navigation:
-  ctrl-o:
-    channel: docker-ps
-    label: containers
+  ctrl-o: {channel: docker-ps, label: containers}
 
 actions:
   ctrl-x:

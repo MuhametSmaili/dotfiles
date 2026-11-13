@@ -1,7 +1,6 @@
 metadata:
   description: SSH hosts
-  requires:
-    - ssh
+  requires: [ssh]
 
 source:
   command: grep '^Host ' ~/.ssh/config ~/.ssh/config.* 2>/dev/null | awk '{print $2}' | grep -v '*' | sort -u

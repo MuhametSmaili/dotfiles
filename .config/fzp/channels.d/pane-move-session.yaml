@@ -1,0 +1,35 @@
+metadata:
+  description: Move pane to another session and focus
+  group: pane
+  target: required
+
+steps:
+  - select: session
+    title: Choose destination session
+    source:
+      builtin: tmux.sessions
+      with: {exclude_current: true}
+
+  - select: window
+    title: Choose a window or create a new one
+    items:
+      - {id: new, label: New window}
+    source:
+      builtin: tmux.windows
+      with: {session: $FZP_STEP_SESSION_ID}
+
+run:
+  # Switch the client first: moving a session's last pane destroys the
+  # session, which would otherwise detach the client. Without --client
+  # there may be no client to switch (fzp run outside a popup).
+  command: |
+    set -e
+    destination=$FZP_STEP_SESSION_ID
+    tmux switch-client ${FZP_CLIENT:+-c "$FZP_CLIENT"} -t "$destination" 2>/dev/null || [ -z "$FZP_CLIENT" ]
+    if [ "$FZP_STEP_WINDOW_ID" = new ]; then
+      window=$(tmux break-pane -d -P -F '#{window_id}' -s "$FZP_PANE_ID" -t "$destination:")
+    else
+      tmux join-pane -d -h -s "$FZP_PANE_ID" -t "$FZP_STEP_WINDOW_PANE_ID"
+      window=$FZP_STEP_WINDOW_ID
+    fi
+    tmux select-window -t "$window" \; select-pane -t "$FZP_PANE_ID"

@@ -1,7 +1,6 @@
 metadata:
   description: Git branches
-  requires:
-    - git
+  requires: [git]
 
 source:
   command: git branch --all --format='%(refname:short)' | sort -u
@@ -14,9 +13,7 @@ ui:
   header: branches
 
 navigation:
-  ctrl-r:
-    channel: git-log
-    label: git log
+  ctrl-r: {channel: git-log, label: git log}
 
 actions:
   enter:

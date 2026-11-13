@@ -1,7 +1,6 @@
 metadata:
   description: Kubernetes services
-  requires:
-    - kubectl
+  requires: [kubectl]
 
 source:
   command: kubectl get svc --all-namespaces --no-headers 2>/dev/null | awk '{print $1"\t"$2"\t"$3"\t"$4"\t"$5}'
@@ -15,12 +14,8 @@ ui:
   header: k8s services
 
 navigation:
-  ctrl-o:
-    channel: k8s-pods
-    label: pods
-  ctrl-t:
-    channel: k8s-deploy
-    label: deployments
+  ctrl-o: {channel: k8s-pods, label: pods}
+  ctrl-t: {channel: k8s-deploy, label: deployments}
 
 actions:
   f2:

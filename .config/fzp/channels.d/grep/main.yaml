@@ -1,10 +1,9 @@
 metadata:
   description: Search text in project
-  requires:
-    - rg
+  requires: [rg]
 
 source:
-  command: printf ''
+  command: "true"
   delimiter: ":"
 
 preview:
@@ -15,9 +14,7 @@ ui:
   header: grep
 
 navigation:
-  ctrl-o:
-    channel: files
-    label: files
+  ctrl-o: {channel: files, label: files}
 
 actions:
   enter:
@@ -28,4 +25,4 @@ actions:
 fzf_options:
   - --disabled
   - --bind
-  - change:reload(fzp _scoped-rg {q})
+  - change:reload:$FZP_CHANNEL_DIR/search.sh {q}

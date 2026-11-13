@@ -1,10 +1,8 @@
 metadata:
   description: Project files
-  requires:
-    - fd
+  requires: [fd]
 
 source:
-  type: script
   script: ./source.sh
   delimiter: "\t"
   ansi: true
@@ -17,9 +15,7 @@ ui:
   prompt: "[files]> "
 
 navigation:
-  ctrl-r:
-    channel: git-log
-    label: git log
+  ctrl-r: {channel: git-log, label: git log}
 
 actions:
   enter:
@@ -33,19 +29,20 @@ actions:
   f3:
     mode: become
     label: paste path
-    script: ./actions/paste-path.sh
+    script: ./paste-path.sh
     args: "{2}"
   ctrl-g:
     mode: raw
-    label: grep scoped
-    command: select-all+become(fzp _scope-and-run grep {+2})
+    label: grep these files
+    # {+f2} is a temporary file listing the paths; grep searches only them.
+    command: select-all+become(fzp --scope {+f2} grep)
   alt-i:
     mode: raw
     label: toggle ignored
     command: >-
       transform:[[ $FZF_PROMPT == *+ign* ]] &&
-      echo "change-prompt([files]> )+reload(FZP_FILES_INCLUDE_IGNORED=0 ${XDG_CONFIG_HOME:-$HOME/.config}/fzp/channels.d/files/source.sh)" ||
-      echo "change-prompt([files+ign]> )+reload(FZP_FILES_INCLUDE_IGNORED=1 ${XDG_CONFIG_HOME:-$HOME/.config}/fzp/channels.d/files/source.sh)"
+      echo "change-prompt([files]> )+reload(FZP_FILES_INCLUDE_IGNORED=0 $FZP_CHANNEL_DIR/source.sh)" ||
+      echo "change-prompt([files+ign]> )+reload(FZP_FILES_INCLUDE_IGNORED=1 $FZP_CHANNEL_DIR/source.sh)"
 
 fzf_options:
   - --tabstop=1

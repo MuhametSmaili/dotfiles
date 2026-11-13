@@ -1,0 +1,9 @@
+metadata:
+  description: Open repository on GitHub
+  group: pane
+  target: required
+  requires: [gh]
+
+run:
+  # Flow commands run in the target pane's directory.
+  command: gh browse

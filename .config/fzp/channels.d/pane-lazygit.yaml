@@ -1,0 +1,11 @@
+metadata:
+  description: Open lazygit in a floating pane
+  group: pane
+  target: required
+  requires: [lazygit]
+
+run:
+  # tmux 3.8 floating pane; same placement as the yazi launcher.
+  command: >-
+    tmux new-pane -t "$FZP_PANE_ID" -X 5% -Y 5% -x 90% -y 90%
+    -c "$FZP_PANE_CWD" -T lazygit lazygit

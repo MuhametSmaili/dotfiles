@@ -1,29 +1,23 @@
 #!/usr/bin/env bash
+# Lists files as "<icon>\t<path>". With FZP_SCOPE_FILE, lists only the paths
+# in that file; FZP_FILES_INCLUDE_IGNORED=1 includes gitignored files.
 set -euo pipefail
 
-if [[ -n "${FZP_SCOPE_FILE:-}" && -f "${FZP_SCOPE_FILE}" ]]; then
-	if command -v devicon-lookup >/dev/null 2>&1; then
-		sort -u "$FZP_SCOPE_FILE" |
-			devicon-lookup |
-			awk '{ icon=$1; $1=""; sub(/^ /, ""); print icon"\t"$0 }'
-		exit 0
+list() {
+	if [[ -n "${FZP_SCOPE_FILE:-}" ]]; then
+		sort -u "$FZP_SCOPE_FILE"
+		return
 	fi
 
-	sort -u "$FZP_SCOPE_FILE" | awk '{ print "  \t"$0 }'
-	exit 0
-fi
-
-fd_args=(--type f --hidden --follow --exclude .git)
-
-if [[ "${FZP_FILES_INCLUDE_IGNORED:-0}" == "1" ]]; then
-	fd_args+=(--no-ignore)
-fi
+	local -a args=(--type f --hidden --follow --exclude .git)
+	if [[ "${FZP_FILES_INCLUDE_IGNORED:-0}" == 1 ]]; then
+		args+=(--no-ignore)
+	fi
+	fd "${args[@]}"
+}
 
 if command -v devicon-lookup >/dev/null 2>&1; then
-	fd "${fd_args[@]}" |
-		devicon-lookup |
-		awk '{ icon=$1; $1=""; sub(/^ /, ""); print icon"\t"$0 }'
-	exit 0
+	list | devicon-lookup | awk '{ icon = $1; $1 = ""; sub(/^ /, ""); print icon "\t" $0 }'
+else
+	list | awk '{ print "  \t" $0 }'
 fi
-
-fd "${fd_args[@]}" | awk '{ print "  \t"$0 }'

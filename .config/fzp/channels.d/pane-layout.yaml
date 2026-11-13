@@ -1,0 +1,17 @@
+metadata:
+  description: Change window layout
+  group: pane
+  target: required
+
+steps:
+  - select: layout
+    title: Choose window layout
+    items:
+      - {id: tiled, label: Tiled grid}
+      - {id: even-horizontal, label: All panes side by side}
+      - {id: even-vertical, label: All panes stacked}
+      - {id: main-horizontal, label: Main pane above smaller panes}
+      - {id: main-vertical, label: Main pane beside smaller panes}
+
+run:
+  command: tmux select-layout -t "$FZP_PANE_ID" "$FZP_STEP_LAYOUT_ID"
