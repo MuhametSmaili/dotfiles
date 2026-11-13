@@ -2,21 +2,10 @@ metadata:
   description: Docker images
   requires: [docker]
 
-source:
-  command: docker images --format '{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.ID}}'
-  delimiter: "\t"
-
-preview:
-  command: docker inspect {4}
-
-ui:
-  header: docker images
-
-navigation:
-  ctrl-o: {channel: docker-ps, label: containers}
-
-actions:
-  ctrl-x:
-    mode: execute-silent
-    label: remove image
-    command: docker rmi {4}
+steps:
+  - title: docker images
+    source: docker images --format '{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.ID}}'
+    preview: docker inspect {4}
+    keys:
+      ctrl-o: {do: "become:fzp docker-ps", label: containers}
+      ctrl-x: {do: "execute-silent:docker rmi {4}", label: remove image}

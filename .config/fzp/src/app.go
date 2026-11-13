@@ -1,51 +1,37 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"fzp/internal/catalog"
-	"fzp/internal/flow"
-	"fzp/internal/fzf"
-	"fzp/internal/screen"
-	"fzp/internal/tmux"
+	"fzp/internal/channel"
 )
 
-// app runs channels. Every command a channel starts inherits environ, so a
-// channel reached through a navigation key keeps the target and scope.
+// app runs channels. Every command a channel starts inherits environ, so
+// context the caller passed in, such as FZP_PANE_ID from a tmux binding,
+// reaches every channel opened from there.
 type app struct {
 	paths   paths
-	self    string
 	height  string
 	environ []string
 }
 
-func newApp(p paths, opts options) (*app, error) {
-	self, err := os.Executable()
-	if err != nil {
-		return nil, fmt.Errorf("locate fzp: %w", err)
+func newApp(p paths, opts options) *app {
+	environ := append(withoutInternal(os.Environ()), "FZP_CONFIG_DIR="+p.config)
+	if opts.inputQuery != nil {
+		environ = append(environ, "FZP_INPUT_QUERY="+*opts.inputQuery)
 	}
 
-	environ := append(os.Environ(), "FZP_CONFIG_DIR="+p.config)
-	if opts.scope != "" {
-		scope, err := filepath.Abs(opts.scope)
-		if err != nil {
-			return nil, err
-		}
-		environ = append(environ, "FZP_SCOPE_FILE="+scope)
-	}
-
-	a := &app{
+	return &app{
 		paths:   p,
-		self:    self,
-		height:  firstNonEmpty(os.Getenv("FZP_HEIGHT"), "100%"),
+		height:  cmp.Or(os.Getenv("FZP_HEIGHT"), "100%"),
 		environ: environ,
 	}
-	return a, nil
 }
 
 func (a *app) run(ctx context.Context, opts options) error {
@@ -53,10 +39,11 @@ func (a *app) run(ctx context.Context, opts options) error {
 	case opts.list:
 		return a.printList()
 	case opts.check:
-		return a.check()
+		return a.check(ctx)
+	case opts.filter != nil:
+		return a.filter(ctx, opts.args[0], *opts.filter)
 	case len(opts.args) == 1:
-		err := a.runChannel(ctx, opts.args[0], opts)
-		return quiet(err)
+		return quiet(a.runChannel(ctx, opts.args[0], opts))
 	default:
 		return a.menu(ctx, opts)
 	}
@@ -64,157 +51,113 @@ func (a *app) run(ctx context.Context, opts options) error {
 
 // quiet turns leaving a channel into success.
 func quiet(err error) error {
-	if errors.Is(err, flow.ErrBackedOut) || errors.Is(err, flow.ErrQuit) || errors.Is(err, context.Canceled) {
+	if errors.Is(err, channel.ErrBackedOut) || errors.Is(err, channel.ErrQuit) || errors.Is(err, context.Canceled) {
 		return nil
 	}
 	return err
 }
 
-// menu lets the user pick a channel and shows the menu again when a flow is
-// left with Esc on its first step.
+// menu lets the user pick a channel, and shows the menu again when a channel
+// is left with Esc on its first step.
 func (a *app) menu(ctx context.Context, opts options) error {
 	for {
 		name, err := a.pickChannel(ctx, opts)
 		if err != nil || name == "" {
-			return err
-		}
-
-		err = a.runChannel(ctx, name, opts)
-		if !errors.Is(err, flow.ErrBackedOut) {
 			return quiet(err)
 		}
 
-		opts.query = ""
+		err = a.runChannel(ctx, name, options{inputQuery: opts.inputQuery})
+		if !errors.Is(err, channel.ErrBackedOut) {
+			return quiet(err)
+		}
 	}
 }
 
+// pickChannel shows the channel menu as a one-step channel. Channels whose
+// YAML is unreadable are left out; fzp --check reports them.
 func (a *app) pickChannel(ctx context.Context, opts options) (string, error) {
-	channels, err := catalog.List(a.paths.channels)
-	if err != nil {
-		return "", err
-	}
+	channels, _ := catalog.List(a.paths.channels)
 
-	var lines strings.Builder
+	var items []map[string]string
 	for _, c := range channels {
 		if opts.group == "" || c.Metadata.Group == opts.group {
-			fmt.Fprintf(&lines, "%s\t%s\t%s\n", c.Name, fzf.Sanitize(c.Metadata.Description, false), c.Path)
+			description := strings.NewReplacer("\t", " ", "\n", " ").Replace(c.Metadata.Description)
+			items = append(items, map[string]string{"name": c.Name, "description": description, "path": c.Path})
 		}
 	}
 
-	label := firstNonEmpty(opts.group, "channel")
-	result, err := fzf.Pick(ctx, fzf.Prompt{
-		Args: []string{
-			"--height", a.height,
-			"--prompt", label + "> ",
-			"--header", "pick a " + label,
-			"--query", opts.query,
-			"--delimiter", "\t",
-			"--with-nth", "1,2",
-			"--with-shell", "bash -c",
-			"--preview", "bat --color=always --style=plain {3} 2>/dev/null || cat {3}",
-		},
-		Input: lines.String(),
-		Env:   a.environ,
-	})
-	if err != nil || result.Aborted {
-		return "", err
+	if len(items) == 0 {
+		return "", fmt.Errorf("no channels in %s", a.paths.channels)
 	}
 
-	name, _, _ := strings.Cut(result.Line, "\t")
-	return name, nil
+	label := cmp.Or(opts.group, "channel")
+	return channel.Pick(ctx, channel.Options{Name: label, Height: a.height, Query: opts.query, Env: a.environ}, channel.Step{
+		Title:   "pick a " + label,
+		Items:   items,
+		Columns: []string{"name", "description", "path"},
+		Show:    []string{"name", "description"},
+		Preview: "bat --color=always --style=plain {3} 2>/dev/null || cat {3}",
+	})
 }
 
 func (a *app) runChannel(ctx context.Context, name string, opts options) error {
-	channel, err := catalog.Find(a.paths.channels, name)
+	found, spec, environ, err := a.load(name)
 	if err != nil {
 		return err
 	}
 
-	if err := channel.Metadata.MissingTools(); err != nil {
+	if err := found.Metadata.Check(environ); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}
 
-	target, err := a.resolveTarget(ctx, channel, opts)
-	if err != nil {
-		return fmt.Errorf("%s: %w", name, err)
-	}
-
-	environ := append(append([]string{}, a.environ...), target.Environ()...)
-	environ = append(environ, "FZP_TARGET="+target.PaneID, "FZP_CHANNEL_DIR="+channel.Dir())
-
-	if channel.Kind == catalog.Flow {
-		return a.runFlow(ctx, channel, target, environ)
-	}
-	return a.runScreen(ctx, channel, opts, environ)
-}
-
-// resolveTarget describes the pane the channel acts on. A channel that
-// requires a target falls back to the pane fzp runs in.
-func (a *app) resolveTarget(ctx context.Context, channel catalog.Channel, opts options) (tmux.Target, error) {
-	pane := opts.target
-	required := channel.Metadata.Target == catalog.TargetRequired
-	if pane == "" && required {
-		pane = os.Getenv("TMUX_PANE")
-	}
-
-	if pane == "" && required {
-		return tmux.Target{}, errors.New("this channel acts on a tmux pane: run it inside tmux or pass --target")
-	}
-	return tmux.Resolve(ctx, pane, opts.client)
-}
-
-func (a *app) runFlow(ctx context.Context, channel catalog.Channel, target tmux.Target, environ []string) error {
-	def, err := flow.Load(channel)
-	if err != nil {
-		return err
-	}
-
-	return def.Run(ctx, flow.Options{
-		Channel: channel.Name,
-		Height:  a.height,
-		Target:  target,
-		Environ: environ,
+	return spec.Run(ctx, channel.Options{
+		Name:     name,
+		Height:   a.height,
+		Query:    opts.query,
+		Env:      environ,
+		HasInput: opts.inputQuery != nil,
 	})
 }
 
-func (a *app) runScreen(ctx context.Context, channel catalog.Channel, opts options, environ []string) error {
-	spec, err := screen.Load(channel)
+// filter prints the rows of a channel's first step that match query.
+func (a *app) filter(ctx context.Context, name, query string) error {
+	_, spec, environ, err := a.load(name)
 	if err != nil {
 		return err
 	}
+	return spec.Filter(ctx, channel.Options{Name: name, Env: environ}, query, os.Stdout)
+}
 
-	return spec.Run(ctx, screen.Options{
-		Channel: channel.Name,
-		Dir:     channel.Dir(),
-		Query:   opts.query,
-		Height:  a.height,
-		Self:    a.self,
-		Env:     environ,
-	})
+func (a *app) load(name string) (catalog.Channel, channel.Spec, []string, error) {
+	found, err := catalog.Find(a.paths.channels, name)
+	if err != nil {
+		return catalog.Channel{}, channel.Spec{}, nil, err
+	}
+
+	spec, err := channel.Load(found.Path)
+	if err != nil {
+		return catalog.Channel{}, channel.Spec{}, nil, err
+	}
+
+	environ := append(append([]string{}, a.environ...), "FZP_CHANNEL_DIR="+found.Dir())
+	return found, spec, environ, nil
 }
 
 func (a *app) printList() error {
 	channels, err := catalog.List(a.paths.channels)
-	if err != nil {
-		return err
-	}
-
 	for _, c := range channels {
 		fmt.Println(c.Name)
 	}
-	return nil
+	return err
 }
 
-// check loads every channel and reports all invalid ones.
-func (a *app) check() error {
-	channels, err := catalog.List(a.paths.channels)
-	if err != nil {
-		return err
-	}
+// check verifies fzf, loads every channel and reports every problem.
+func (a *app) check(ctx context.Context) error {
+	channels, listErr := catalog.List(a.paths.channels)
 
-	var failures []error
+	failures := []error{channel.CheckFzf(ctx), listErr}
 	for _, c := range channels {
-		if err := load(c); err != nil {
+		if _, err := channel.Load(c.Path); err != nil {
 			failures = append(failures, fmt.Errorf("%s: %w", c.Name, err))
 		}
 	}
@@ -223,25 +166,29 @@ func (a *app) check() error {
 		return err
 	}
 
-	fmt.Printf("%d channels are valid\n", len(channels))
+	fmt.Printf("fzf is new enough; %d channels are valid\n", len(channels))
 	return nil
 }
 
-func load(c catalog.Channel) error {
-	if c.Kind == catalog.Flow {
-		_, err := flow.Load(c)
-		return err
-	}
+// withoutInternal drops state a parent fzp passed to its own commands, so a
+// channel only sees an input query or scope when it was handed one.
+func withoutInternal(environ []string) []string {
+	internal := []string{"FZP_INPUT_QUERY=", "FZP_SCOPE_FILE=", "FZP_SOURCE=", "FZP_RESULT=", "FZP_CHANNEL_DIR="}
 
-	_, err := screen.Load(c)
-	return err
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			return v
+	kept := make([]string, 0, len(environ))
+	for _, entry := range environ {
+		if !hasAnyPrefix(entry, internal) {
+			kept = append(kept, entry)
 		}
 	}
-	return ""
+	return kept
+}
+
+func hasAnyPrefix(s string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(s, prefix) {
+			return true
+		}
+	}
+	return false
 }

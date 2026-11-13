@@ -1,8 +1,8 @@
 // Command fzp is a channel-based launcher built on fzf.
 //
-// A channel is a YAML file in $XDG_CONFIG_HOME/fzp/channels.d. A screen
-// channel is one fzf list with key bindings; a flow channel is a sequence of
-// selection steps followed by one command.
+// A channel is a YAML file in $XDG_CONFIG_HOME/fzp/channels.d: one or more
+// fzf steps whose rows come from shell commands, optionally followed by a
+// command that receives the picks. See package channel for the format.
 package main
 
 import (
@@ -19,37 +19,40 @@ import (
 
 const usage = `Usage: fzp [flags] [channel]
 
-  fzp                  pick a channel, then run it
-  fzp files            run the files channel
-  fzp --group pane     pick among channels whose metadata.group is "pane"
-  fzp --list           list channel names
-  fzp --check          validate every channel
+  fzp                    pick a channel, then run it
+  fzp files              run the files channel
+  fzp --group pane       pick among channels whose metadata.group is "pane"
+  fzp --list             list channel names
+  fzp --check            validate every channel
+  fzp --filter Q files   print the rows of files' first step that match Q
 
 Flags:
-  --query TEXT         initial query
-  --target PANE        tmux pane to act on, e.g. #{pane_id} from a binding;
-                       exported as FZP_PANE_ID, FZP_PANE_CWD, FZP_SESSION_ID, ...
-  --client CLIENT      tmux client that opened fzp, exported as FZP_CLIENT
-  --group GROUP        limit the channel menu to one metadata.group
-  --scope FILE         restrict file channels to the paths listed in FILE,
-                       exported as FZP_SCOPE_FILE
+  --query TEXT           initial query
+  --group GROUP          limit the channel menu to one metadata.group
+  --input-query TEXT     query handed over by another channel, e.g. a key
+                         become:fzp --input-query {q} grep; exported as
+                         FZP_INPUT_QUERY, and the channel's scope command runs
 
 Environment:
-  FZP_HEIGHT           picker height (default 100%%)
-  XDG_CONFIG_HOME      channels live in $XDG_CONFIG_HOME/fzp/channels.d
+  FZP_HEIGHT             picker height (default 100%%)
+  XDG_CONFIG_HOME        channels live in $XDG_CONFIG_HOME/fzp/channels.d
+
+Channels read context from the environment; a tmux binding passes the pane
+with, e.g., display-popup -e FZP_PANE_ID=#{pane_id}.
 
 Channels dir: %s
 `
 
 type options struct {
-	query  string
-	target string
-	client string
-	group  string
-	scope  string
-	list   bool
-	check  bool
-	args   []string
+	query string
+	group string
+	list  bool
+	check bool
+	args  []string
+	// inputQuery and filter are nil when the flag is absent; an empty
+	// query is a valid value for both.
+	inputQuery *string
+	filter     *string
 }
 
 func main() {
@@ -68,15 +71,17 @@ func run(args []string, stderr io.Writer) int {
 		return 2
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// Ctrl+C belongs to whatever has the terminal: fzf, or a program a key
+	// started. fzp only uses it to stop its own commands (see proc), so it
+	// must not die of it. signal.Notify never blocks on the full channel,
+	// and unlike signal.Ignore it does not make children ignore SIGINT.
+	signal.Notify(make(chan os.Signal, 1), os.Interrupt)
+
+	// A closed popup (SIGHUP) or a kill (SIGTERM) stops fzf and commands.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 
-	app, err := newApp(paths, opts)
-	if err == nil {
-		err = app.run(ctx, opts)
-	}
-
-	if err != nil {
+	if err := newApp(paths, opts).run(ctx, opts); err != nil {
 		_, _ = fmt.Fprintln(stderr, "fzp:", err)
 		return 1
 	}
@@ -91,23 +96,42 @@ func parseFlags(args []string, stderr io.Writer, paths paths) (options, error) {
 	flags.Usage = func() { _, _ = fmt.Fprintf(stderr, usage, paths.channels) }
 
 	flags.StringVar(&opts.query, "query", "", "")
-	flags.StringVar(&opts.target, "target", os.Getenv("FZP_TARGET"), "")
-	flags.StringVar(&opts.client, "client", os.Getenv("FZP_CLIENT"), "")
 	flags.StringVar(&opts.group, "group", "", "")
-	flags.StringVar(&opts.scope, "scope", os.Getenv("FZP_SCOPE_FILE"), "")
 	flags.BoolVar(&opts.list, "list", false, "")
 	flags.BoolVar(&opts.check, "check", false, "")
+	inputQuery := flags.String("input-query", "", "")
+	filter := flags.String("filter", "", "")
 
 	if err := flags.Parse(args); err != nil {
 		return options{}, err
 	}
 
+	flags.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "input-query":
+			opts.inputQuery = inputQuery
+		case "filter":
+			opts.filter = filter
+		}
+	})
+
 	opts.args = flags.Args()
-	if len(opts.args) > 1 {
-		_, _ = fmt.Fprintf(stderr, "fzp: expected at most one channel, got %q\n", opts.args)
-		return options{}, errors.New("too many arguments")
+	if err := checkArgs(opts); err != nil {
+		_, _ = fmt.Fprintln(stderr, "fzp:", err)
+		return options{}, err
 	}
 	return opts, nil
+}
+
+func checkArgs(opts options) error {
+	switch {
+	case len(opts.args) > 1:
+		return fmt.Errorf("expected at most one channel, got %q", opts.args)
+	case opts.filter != nil && len(opts.args) != 1:
+		return errors.New("--filter needs a channel")
+	default:
+		return nil
+	}
 }
 
 // paths are where fzp finds its configuration.

@@ -1,80 +1,113 @@
 package proc
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
 
-func TestOutputReturnsStdout(t *testing.T) {
-	cmd := Command{Argv: Shell("printf 'a\\nb'"), Timeout: time.Second, StdoutLimit: 64}
+func TestRunWritesStdout(t *testing.T) {
+	var out bytes.Buffer
 
-	out, err := cmd.Output(context.Background())
+	err := Command{Argv: Shell("printf 'a\\nb'")}.Run(context.Background(), &out)
 
-	if err != nil || string(out) != "a\nb" {
-		t.Errorf("Output = %q, %v", out, err)
+	if err != nil || out.String() != "a\nb" {
+		t.Errorf("Run = %q, %v", out.String(), err)
 	}
 }
 
-func TestOutputFailures(t *testing.T) {
-	tests := []struct {
-		name   string
-		script string
-		limit  int
-		is     error
-		want   string
-	}{
-		{name: "exit status with stderr", script: "echo boom >&2; exit 3", limit: 64, want: "command: exit status 3\nboom"},
-		{name: "output too large", script: "printf 0123456789", limit: 4, is: ErrOutputTooLarge},
-		{name: "timeout", script: "sleep 5", limit: 64, is: context.DeadlineExceeded},
-	}
+func TestRunReportsExitStatusAndStderr(t *testing.T) {
+	err := Command{Argv: Shell("echo boom >&2; exit 3")}.Run(context.Background(), nil)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cmd := Command{Argv: Shell(tt.script), Timeout: 200 * time.Millisecond, StdoutLimit: tt.limit}
-
-			_, err := cmd.Output(context.Background())
-
-			var failure *Error
-			if !errors.As(err, &failure) {
-				t.Fatalf("error = %v, want *Error", err)
-			}
-			if tt.is != nil && !errors.Is(err, tt.is) {
-				t.Errorf("error = %v, want %v", err, tt.is)
-			}
-			if tt.want != "" && err.Error() != tt.want {
-				t.Errorf("error = %q, want %q", err.Error(), tt.want)
-			}
-		})
+	var failure *Error
+	if !errors.As(err, &failure) || err.Error() != "command: exit status 3\nboom" {
+		t.Errorf("error = %v", err)
 	}
 }
 
-func TestTimeoutStopsTheWholeProcessGroup(t *testing.T) {
-	marker := t.TempDir() + "/survived"
-	cmd := Command{Argv: Shell("(sleep 1; touch " + marker + ") & wait"), Timeout: 100 * time.Millisecond}
-
-	_, err := cmd.Output(context.Background())
-
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("error = %v, want a timeout", err)
-	}
-
-	time.Sleep(1500 * time.Millisecond)
-	if _, err := os.Stat(marker); err == nil {
-		t.Error("a child of the timed-out command kept running")
-	}
-}
-
-func TestStderrKeepsOnlyTheTail(t *testing.T) {
-	cmd := Command{Argv: Shell("head -c 20000 /dev/zero | tr '\\0' x >&2; echo END >&2; exit 1"), Timeout: time.Second}
-
-	_, err := cmd.Output(context.Background())
+func TestRunKeepsOnlyTheEndOfStderr(t *testing.T) {
+	err := Command{Argv: Shell("head -c 20000 /dev/zero | tr '\\0' x >&2; echo END >&2; exit 1")}.Run(context.Background(), nil)
 
 	var failure *Error
 	if !errors.As(err, &failure) || len(failure.Stderr) > maxStderr || !strings.HasSuffix(failure.Stderr, "END") {
-		t.Errorf("stderr length %d, error %v", len(failure.Stderr), err)
+		t.Errorf("error = %v", err)
 	}
+}
+
+func TestRunSucceedsWhenABackgroundChildKeepsAPipeOpen(t *testing.T) {
+	err := Command{Argv: Shell("sleep 2 & echo started")}.Run(context.Background(), &bytes.Buffer{})
+
+	if err != nil {
+		t.Errorf("Run = %v, want success", err)
+	}
+}
+
+func TestCancelStopsTheWholeProcessGroup(t *testing.T) {
+	pidFile := t.TempDir() + "/pid"
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+
+	go func() {
+		done <- Command{Argv: Shell("sleep 30 & echo $! > " + pidFile + "; wait")}.Run(ctx, nil)
+	}()
+	child := waitForPID(t, pidFile)
+	cancel()
+
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run = %v, want context.Canceled", err)
+	}
+	waitUntilGone(t, child)
+}
+
+func TestInterruptStopsTheCommand(t *testing.T) {
+	pidFile := t.TempDir() + "/pid"
+	done := make(chan error, 1)
+
+	go func() {
+		done <- Command{Argv: Shell("echo $$ > " + pidFile + "; sleep 30")}.Run(context.Background(), nil)
+	}()
+	waitForPID(t, pidFile)
+	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := <-done; !errors.Is(err, ErrInterrupted) {
+		t.Errorf("Run = %v, want ErrInterrupted", err)
+	}
+}
+
+// waitForPID waits up to 5 s for a command to write its PID to path.
+func waitForPID(t *testing.T, path string) int {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		data, err := os.ReadFile(path)
+		if pid, convErr := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && convErr == nil {
+			return pid
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("no PID in %s", path)
+	return 0
+}
+
+// waitUntilGone waits up to 5 s for pid to exit.
+func waitUntilGone(t *testing.T, pid int) {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if syscall.Kill(pid, 0) != nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Errorf("process %d still runs", pid)
 }

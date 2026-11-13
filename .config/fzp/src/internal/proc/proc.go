@@ -1,13 +1,14 @@
-// Package proc runs bounded, non-interactive child processes.
+// Package proc runs non-interactive shell commands for fzp.
 package proc
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"syscall"
 	"time"
@@ -20,18 +21,15 @@ const (
 	pipeGrace = 200 * time.Millisecond
 )
 
-// ErrOutputTooLarge reports stdout beyond Command.StdoutLimit.
-var ErrOutputTooLarge = errors.New("output exceeds limit")
+// ErrInterrupted reports a command stopped with Ctrl+C.
+var ErrInterrupted = errors.New("interrupted")
 
 // Command is one non-interactive child process. It gets no stdin and runs in
-// its own process group, so a timeout or cancellation stops everything it
-// started. A zero StdoutLimit discards stdout; a nil Env inherits fzp's.
+// its own process group, so stopping it stops everything it started. A nil
+// Env inherits fzp's.
 type Command struct {
-	Argv        []string
-	Dir         string
-	Env         []string
-	Timeout     time.Duration
-	StdoutLimit int
+	Argv []string
+	Env  []string
 }
 
 // Shell returns the argv that runs script with bash.
@@ -41,98 +39,53 @@ func Shell(script string) []string {
 
 // Error reports a failed command with the tail of its stderr.
 type Error struct {
-	Name   string
 	Err    error
 	Stderr string
 }
 
 func (e *Error) Error() string {
 	if e.Stderr == "" {
-		return fmt.Sprintf("%s: %v", e.Name, e.Err)
+		return "command: " + e.Err.Error()
 	}
-	return fmt.Sprintf("%s: %v\n%s", e.Name, e.Err, e.Stderr)
+	return fmt.Sprintf("command: %v\n%s", e.Err, e.Stderr)
 }
 
 func (e *Error) Unwrap() error { return e.Err }
 
-// Output runs the command and returns its stdout.
-func (c Command) Output(ctx context.Context) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.Timeout)
-	defer cancel()
+// Run runs the command with stdout going to w; a nil w discards it. Because
+// the command's process group is not in the terminal's foreground, Ctrl+C
+// reaches fzp, which then stops the group and returns ErrInterrupted.
+func (c Command) Run(ctx context.Context, w io.Writer) error {
+	interrupted, stop := signal.NotifyContext(ctx, os.Interrupt)
+	defer stop()
 
-	stdout := &limitedBuffer{limit: c.StdoutLimit}
 	stderr := &tailBuffer{limit: maxStderr}
 
-	cmd := c.build(ctx)
-	cmd.Stdout = stdout
-	if c.StdoutLimit == 0 {
-		cmd.Stdout = io.Discard
-	}
-	cmd.Stderr = stderr
-
-	err := cmd.Run()
-	if err == nil && stdout.overflow {
-		err = fmt.Errorf("%w of %d bytes", ErrOutputTooLarge, c.StdoutLimit)
-	}
-
-	if err != nil {
-		return nil, c.failure(ctx, err, stderr.String())
-	}
-	return stdout.Bytes(), nil
-}
-
-func (c Command) build(ctx context.Context) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, c.Argv[0], c.Argv[1:]...)
-	cmd.Dir = c.Dir
+	cmd := exec.CommandContext(interrupted, c.Argv[0], c.Argv[1:]...)
 	cmd.Env = c.Env
+	cmd.Stdout = w
+	cmd.Stderr = stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 	cmd.WaitDelay = pipeGrace
-	return cmd
-}
 
-// failure explains why the command failed; a timeout or cancellation is
-// reported instead of the resulting "signal: killed".
-func (c Command) failure(ctx context.Context, err error, stderr string) error {
+	err := cmd.Run()
+
 	switch {
-	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		err = fmt.Errorf("timed out after %s: %w", c.Timeout, context.DeadlineExceeded)
+	case err == nil:
+		return nil
+	case errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState != nil && cmd.ProcessState.Success():
+		// The command succeeded; a background child kept a pipe open.
+		return nil
 	case ctx.Err() != nil:
-		err = ctx.Err()
+		return ctx.Err()
+	case interrupted.Err() != nil:
+		return &Error{Err: ErrInterrupted, Stderr: stderr.String()}
+	default:
+		return &Error{Err: err, Stderr: stderr.String()}
 	}
-	return &Error{Name: c.name(), Err: err, Stderr: stderr}
-}
-
-func (c Command) name() string {
-	if len(c.Argv) >= 3 && c.Argv[0] == "bash" && c.Argv[1] == "-c" {
-		return "command"
-	}
-	return c.Argv[0]
-}
-
-// limitedBuffer keeps at most limit bytes and records whether more arrived.
-// The buffer is a named field, not embedded: an embedded bytes.Buffer would
-// promote ReadFrom, which io.Copy prefers over Write, bypassing the limit.
-type limitedBuffer struct {
-	buf      bytes.Buffer
-	limit    int
-	overflow bool
-}
-
-func (b *limitedBuffer) Write(p []byte) (int, error) {
-	room := b.limit - b.buf.Len()
-	if len(p) > room {
-		b.overflow = true
-		b.buf.Write(p[:max(room, 0)])
-		return len(p), nil
-	}
-	return b.buf.Write(p)
-}
-
-func (b *limitedBuffer) Bytes() []byte {
-	return b.buf.Bytes()
 }
 
 // tailBuffer keeps the last limit bytes written to it.

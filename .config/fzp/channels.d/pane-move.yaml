@@ -1,24 +1,27 @@
 metadata:
   description: Move pane within this session and focus
   group: pane
-  target: required
+  requires_env: [FZP_PANE_ID, FZP_WINDOW_ID, FZP_SESSION_ID]
 
 steps:
   - select: window
     title: Choose a window or create a new one
+    columns: [id, pane, name, path]
+    show: [name, path]
     items:
-      - {id: new, label: New window}
-    source:
-      builtin: tmux.windows
-      with: {session: $FZP_SESSION_ID, exclude_current: true}
+      - {id: new, name: New window}
+    # Other windows of this session; pane is each window's active pane.
+    source: >-
+      t=$'\t';
+      tmux list-windows -t "$FZP_SESSION_ID" -F "#{window_id}${t}#{pane_id}${t}#{window_index}: #{window_name}${t}#{pane_current_path}"
+      | awk -F '\t' -v current="$FZP_WINDOW_ID" '$1 != current'
 
-run:
-  command: |
-    set -e
-    if [ "$FZP_STEP_WINDOW_ID" = new ]; then
-      window=$(tmux break-pane -d -P -F '#{window_id}' -s "$FZP_PANE_ID" -t "$FZP_SESSION_ID:")
-    else
-      tmux join-pane -d -h -s "$FZP_PANE_ID" -t "$FZP_STEP_WINDOW_PANE_ID"
-      window=$FZP_STEP_WINDOW_ID
-    fi
-    tmux select-window -t "$window" \; select-pane -t "$FZP_PANE_ID"
+run: |
+  set -e
+  if [ "$FZP_STEP_WINDOW_ID" = new ]; then
+    window=$(tmux break-pane -d -P -F '#{window_id}' -s "$FZP_PANE_ID" -t "$FZP_SESSION_ID:")
+  else
+    tmux join-pane -d -h -s "$FZP_PANE_ID" -t "$FZP_STEP_WINDOW_PANE"
+    window=$FZP_STEP_WINDOW_ID
+  fi
+  tmux select-window -t "$window" \; select-pane -t "$FZP_PANE_ID"

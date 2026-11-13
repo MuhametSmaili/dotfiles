@@ -2,28 +2,14 @@ metadata:
   description: Git commit log
   requires: [git]
 
-source:
-  command: git log --oneline --all --decorate --color=always -200
-  ansi: true
-  no_sort: true
-
-preview:
-  command: git show --stat --color=always {1}
-  window: right:60%
-
-ui:
-  header: git log
-
-navigation:
-  ctrl-o: {channel: files, label: files}
-  ctrl-t: {channel: git-branches, label: branches}
-
-actions:
-  enter:
-    mode: become
-    label: show
-    command: git show {1}
-  f2:
-    mode: execute-silent
-    label: copy sha
-    command: echo -n {1} | pbcopy
+steps:
+  - title: git log
+    source: git log --oneline --all --decorate --color=always -200
+    preview: git show --stat --color=always {1}
+    preview_window: right:60%
+    fzf: [--ansi, --no-sort, --delimiter, " "]
+    keys:
+      enter: {do: "become:git show {1}", label: show}
+      f2: {do: 'execute-silent:printf %s {1} | "$FZP_CONFIG_DIR/lib/copy.sh"', label: copy sha}
+      ctrl-o: {do: "become:fzp files", label: files}
+      ctrl-t: {do: "become:fzp git-branches", label: branches}

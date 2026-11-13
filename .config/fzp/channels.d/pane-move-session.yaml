@@ -1,35 +1,38 @@
 metadata:
   description: Move pane to another session and focus
   group: pane
-  target: required
+  requires_env: [FZP_PANE_ID, FZP_SESSION_ID]
 
 steps:
   - select: session
     title: Choose destination session
-    source:
-      builtin: tmux.sessions
-      with: {exclude_current: true}
+    columns: [id, name, info]
+    show: [name, info]
+    source: >-
+      t=$'\t';
+      tmux list-sessions -F "#{session_id}${t}#{session_name}${t}#{session_windows} windows#{?session_attached, attached,}"
+      | awk -F '\t' -v current="$FZP_SESSION_ID" '$1 != current'
 
   - select: window
     title: Choose a window or create a new one
+    columns: [id, pane, name, path]
+    show: [name, path]
     items:
-      - {id: new, label: New window}
-    source:
-      builtin: tmux.windows
-      with: {session: $FZP_STEP_SESSION_ID}
+      - {id: new, name: New window}
+    source: >-
+      t=$'\t';
+      tmux list-windows -t "$FZP_STEP_SESSION_ID" -F "#{window_id}${t}#{pane_id}${t}#{window_index}: #{window_name}${t}#{pane_current_path}"
 
-run:
-  # Switch the client first: moving a session's last pane destroys the
-  # session, which would otherwise detach the client. Without --client
-  # there may be no client to switch (fzp run outside a popup).
-  command: |
-    set -e
-    destination=$FZP_STEP_SESSION_ID
-    tmux switch-client ${FZP_CLIENT:+-c "$FZP_CLIENT"} -t "$destination" 2>/dev/null || [ -z "$FZP_CLIENT" ]
-    if [ "$FZP_STEP_WINDOW_ID" = new ]; then
-      window=$(tmux break-pane -d -P -F '#{window_id}' -s "$FZP_PANE_ID" -t "$destination:")
-    else
-      tmux join-pane -d -h -s "$FZP_PANE_ID" -t "$FZP_STEP_WINDOW_PANE_ID"
-      window=$FZP_STEP_WINDOW_ID
-    fi
-    tmux select-window -t "$window" \; select-pane -t "$FZP_PANE_ID"
+# Switch the client first: moving a session's last pane destroys the session,
+# which would otherwise detach the client.
+run: |
+  set -e
+  destination=$FZP_STEP_SESSION_ID
+  tmux switch-client ${FZP_CLIENT:+-c "$FZP_CLIENT"} -t "$destination" 2>/dev/null || [ -z "${FZP_CLIENT:-}" ]
+  if [ "$FZP_STEP_WINDOW_ID" = new ]; then
+    window=$(tmux break-pane -d -P -F '#{window_id}' -s "$FZP_PANE_ID" -t "$destination:")
+  else
+    tmux join-pane -d -h -s "$FZP_PANE_ID" -t "$FZP_STEP_WINDOW_PANE"
+    window=$FZP_STEP_WINDOW_ID
+  fi
+  tmux select-window -t "$window" \; select-pane -t "$FZP_PANE_ID"

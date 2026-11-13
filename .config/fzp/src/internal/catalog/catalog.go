@@ -1,49 +1,37 @@
 // Package catalog finds channel definitions in the channels directory.
 //
 // A channel is <name>.yaml, or a bundle <name>/main.yaml that keeps its
-// scripts next to it; the bundle wins when both exist. A channel with steps:
-// or run: is a flow; any other channel is a single fzf screen.
+// scripts next to it; the bundle wins when both exist.
 package catalog
 
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
-// Kind is how a channel runs.
-type Kind int
-
-const (
-	// Screen is one fzf list with key bindings.
-	Screen Kind = iota
-	// Flow is a sequence of selection steps followed by one command.
-	Flow
-)
-
-// TargetRequired as metadata.target means the channel acts on a tmux pane
-// and must not start without one.
-const TargetRequired = "required"
-
-// Metadata is the metadata: block shared by both kinds of channel.
+// Metadata is the metadata: block of a channel.
 type Metadata struct {
-	Description string   `yaml:"description"`
-	Group       string   `yaml:"group"`
-	Requires    []string `yaml:"requires"`
-	Target      string   `yaml:"target"`
+	Description string `yaml:"description"`
+	Group       string `yaml:"group"`
+	// Requires lists tools that must be on PATH.
+	Requires []string `yaml:"requires"`
+	// RequiresEnv lists variables the caller must set, such as the pane
+	// context a tmux binding passes in.
+	RequiresEnv []string `yaml:"requires_env"`
 }
 
 // Channel is one channel definition.
 type Channel struct {
 	Name     string
 	Path     string
-	Kind     Kind
 	Metadata Metadata
 }
 
@@ -52,36 +40,25 @@ func (c Channel) Dir() string {
 	return filepath.Dir(c.Path)
 }
 
-// header is the part of a channel file the catalog reads; each kind decodes
-// the full file strictly when it runs.
-type header struct {
-	Metadata Metadata  `yaml:"metadata"`
-	Steps    yaml.Node `yaml:"steps"`
-	Run      yaml.Node `yaml:"run"`
-}
-
-// List returns every channel in dir, sorted by name.
+// List returns every readable channel in dir, sorted by name, and an error
+// describing each channel whose metadata could not be read.
 func List(dir string) ([]Channel, error) {
 	paths, err := channelPaths(dir)
 	if err != nil {
 		return nil, err
 	}
 
-	names := make([]string, 0, len(paths))
-	for name := range paths {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	channels := make([]Channel, 0, len(names))
-	for _, name := range names {
+	var channels []Channel
+	var failures []error
+	for _, name := range slices.Sorted(maps.Keys(paths)) {
 		channel, err := read(name, paths[name])
 		if err != nil {
-			return nil, err
+			failures = append(failures, err)
+			continue
 		}
 		channels = append(channels, channel)
 	}
-	return channels, nil
+	return channels, errors.Join(failures...)
 }
 
 // Find returns the channel called name.
@@ -123,41 +100,58 @@ func channelPaths(dir string) (map[string]string, error) {
 	return paths, nil
 }
 
+// read loads only the metadata; the channel package validates the rest.
 func read(name, path string) (Channel, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Channel{}, err
 	}
 
-	var h header
-	if err := yaml.Unmarshal(data, &h); err != nil {
+	var header struct {
+		Metadata Metadata `yaml:"metadata"`
+	}
+	if err := yaml.Unmarshal(data, &header); err != nil {
 		return Channel{}, fmt.Errorf("%s: %w", path, err)
 	}
-
-	if h.Metadata.Target != "" && h.Metadata.Target != TargetRequired {
-		return Channel{}, fmt.Errorf("%s: metadata.target must be %q or omitted", path, TargetRequired)
-	}
-
-	kind := Screen
-	if h.Steps.Kind != 0 || h.Run.Kind != 0 {
-		kind = Flow
-	}
-	return Channel{Name: name, Path: path, Kind: kind, Metadata: h.Metadata}, nil
+	return Channel{Name: name, Path: path, Metadata: header.Metadata}, nil
 }
 
-// MissingTools reports the required tools that are not on PATH.
-func (m Metadata) MissingTools() error {
-	var missing []string
+// Check reports required tools missing from PATH and required variables
+// that are unset or empty in environ.
+func (m Metadata) Check(environ []string) error {
+	var problems []error
+
+	var tools []string
 	for _, tool := range m.Requires {
 		if _, err := exec.LookPath(tool); err != nil {
-			missing = append(missing, tool)
+			tools = append(tools, tool)
 		}
 	}
-
-	if len(missing) > 0 {
-		return errors.New("missing dependencies: " + strings.Join(missing, " "))
+	if len(tools) > 0 {
+		problems = append(problems, errors.New("missing dependencies: "+strings.Join(tools, " ")))
 	}
-	return nil
+
+	var vars []string
+	for _, name := range m.RequiresEnv {
+		if lookup(environ, name) == "" {
+			vars = append(vars, name)
+		}
+	}
+	if len(vars) > 0 {
+		problems = append(problems, errors.New("missing environment: "+strings.Join(vars, " ")))
+	}
+	return errors.Join(problems...)
+}
+
+// lookup returns the last value of name in environ, as exec would use it.
+func lookup(environ []string, name string) string {
+	value := ""
+	for _, entry := range environ {
+		if v, ok := strings.CutPrefix(entry, name+"="); ok {
+			value = v
+		}
+	}
+	return value
 }
 
 func isFile(path string) bool {

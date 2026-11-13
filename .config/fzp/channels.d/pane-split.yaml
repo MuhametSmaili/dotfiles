@@ -1,14 +1,15 @@
 metadata:
   description: Split pane with a new shell
   group: pane
-  target: required
+  requires_env: [FZP_PANE_ID, FZP_PANE_CWD]
 
 steps:
   - select: layout
     title: Choose split direction
+    columns: [flag, label]
+    show: [label]
     items:
-      - {id: horizontal, label: Side by side, flag: -h}
-      - {id: vertical, label: Stacked, flag: -v}
+      - {flag: -h, label: Side by side}
+      - {flag: -v, label: Stacked}
 
-run:
-  command: tmux split-window "$FZP_STEP_LAYOUT_FLAG" -t "$FZP_PANE_ID" -c "$FZP_PANE_CWD"
+run: tmux split-window "$FZP_STEP_LAYOUT_FLAG" -t "$FZP_PANE_ID" -c "$FZP_PANE_CWD"

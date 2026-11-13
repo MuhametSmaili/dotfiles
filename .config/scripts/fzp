@@ -15,22 +15,27 @@ build() {
 	if ! command -v go >/dev/null 2>&1; then
 		command -v mise >/dev/null 2>&1 || {
 			echo "fzp: Go is required to build $src" >&2
-			exit 1
+			return 1
 		}
 		go=(mise x -- go)
 	fi
 
 	mkdir -p "$(dirname "$bin")"
-	# Build to a temporary path, so a failed build keeps the previous binary
-	# and a concurrent fzp never runs a half-written one.
-	(cd "$src" && "${go[@]}" build -o "$bin.tmp" .) && mv -f "$bin.tmp" "$bin"
+	# Build to a private temporary file, so a failed build keeps the previous
+	# binary and a concurrent fzp never runs a half-written one.
+	local tmp
+	tmp="$(mktemp "$bin.XXXXXX")"
+	if (cd "$src" && "${go[@]}" build -o "$tmp" .); then
+		mv -f "$tmp" "$bin"
+	else
+		rm -f "$tmp"
+		return 1
+	fi
 }
 
-if stale; then
-	build || {
-		echo "fzp: build failed" >&2
-		exit 1
-	}
+if stale && ! build; then
+	[[ -x "$bin" ]] || exit 1
+	echo "fzp: build failed; running the previous binary" >&2
 fi
 
 exec "$bin" "$@"

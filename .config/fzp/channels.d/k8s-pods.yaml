@@ -2,31 +2,14 @@ metadata:
   description: Kubernetes pods
   requires: [kubectl]
 
-source:
-  command: kubectl get pods --all-namespaces --no-headers 2>/dev/null | awk '{print $1"\t"$2"\t"$3"\t"$4"\t"$5}'
-  delimiter: "\t"
-
-preview:
-  command: kubectl describe pod {2} -n {1} 2>/dev/null
-  window: right:55%
-
-ui:
-  header: k8s pods
-
-navigation:
-  ctrl-v: {channel: k8s-svc, label: services}
-  ctrl-o: {channel: k8s-deploy, label: deployments}
-
-actions:
-  ctrl-l:
-    mode: become
-    label: logs
-    command: kubectl logs -f {2} -n {1}
-  ctrl-e:
-    mode: become
-    label: exec
-    command: kubectl exec -it {2} -n {1} -- sh
-  ctrl-x:
-    mode: execute-silent
-    label: delete pod
-    command: kubectl delete pod {2} -n {1}
+steps:
+  - title: k8s pods
+    source: kubectl get pods --all-namespaces --no-headers 2>/dev/null | awk '{print $1"\t"$2"\t"$3"\t"$4"\t"$5}'
+    preview: kubectl describe pod {2} -n {1} 2>/dev/null
+    preview_window: right:55%
+    keys:
+      ctrl-v: {do: "become:fzp k8s-svc", label: services}
+      ctrl-o: {do: "become:fzp k8s-deploy", label: deployments}
+      ctrl-l: {do: "become:kubectl logs -f {2} -n {1}", label: logs}
+      ctrl-e: {do: "become:kubectl exec -it {2} -n {1} -- sh", label: exec}
+      ctrl-x: {do: "execute-silent:kubectl delete pod {2} -n {1}", label: delete pod}

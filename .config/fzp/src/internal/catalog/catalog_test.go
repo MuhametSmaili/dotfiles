@@ -40,8 +40,23 @@ func TestListFindsFilesAndBundles(t *testing.T) {
 		t.Errorf("channels = %v", got)
 	}
 
-	if channels[1].Kind != Flow || channels[2].Kind != Screen || channels[2].Metadata.Description != "SSH hosts" {
-		t.Errorf("kinds or metadata = %+v", channels)
+	if channels[2].Metadata.Description != "SSH hosts" {
+		t.Errorf("metadata = %+v", channels[2].Metadata)
+	}
+}
+
+func TestListSkipsUnreadableChannels(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "good.yaml"), "run: true")
+	writeFile(t, filepath.Join(dir, "broken.yaml"), "metadata: [not, a, map")
+
+	channels, err := List(dir)
+
+	if len(channels) != 1 || channels[0].Name != "good" {
+		t.Errorf("channels = %+v", channels)
+	}
+	if err == nil || !strings.Contains(err.Error(), "broken.yaml") {
+		t.Errorf("error = %v, want one naming broken.yaml", err)
 	}
 }
 
@@ -73,23 +88,29 @@ func TestFind(t *testing.T) {
 	}
 }
 
-func TestReadRejectsUnknownTarget(t *testing.T) {
-	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "x.yaml"), "metadata: {target: window}\nrun: {command: true}")
-
-	_, err := Find(dir, "x")
-
-	if err == nil || !strings.Contains(err.Error(), "metadata.target") {
-		t.Errorf("error = %v", err)
+func TestCheck(t *testing.T) {
+	tests := []struct {
+		name    string
+		meta    Metadata
+		environ []string
+		want    string
+	}{
+		{name: "satisfied", meta: Metadata{Requires: []string{"sh"}, RequiresEnv: []string{"FZP_PANE_ID"}}, environ: []string{"FZP_PANE_ID=%1"}},
+		{name: "missing tool", meta: Metadata{Requires: []string{"sh", "fzp-surely-missing-tool"}}, want: "missing dependencies: fzp-surely-missing-tool"},
+		{name: "unset variable", meta: Metadata{RequiresEnv: []string{"FZP_PANE_ID", "HOME"}}, environ: []string{"HOME=/h"}, want: "missing environment: FZP_PANE_ID"},
+		{name: "empty variable", meta: Metadata{RequiresEnv: []string{"FZP_PANE_ID"}}, environ: []string{"FZP_PANE_ID=%1", "FZP_PANE_ID="}, want: "missing environment: FZP_PANE_ID"},
 	}
-}
 
-func TestMissingTools(t *testing.T) {
-	m := Metadata{Requires: []string{"sh", "fzp-surely-missing-tool"}}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.meta.Check(tt.environ)
 
-	err := m.MissingTools()
-
-	if err == nil || err.Error() != "missing dependencies: fzp-surely-missing-tool" {
-		t.Errorf("MissingTools = %v", err)
+			if tt.want == "" && err != nil {
+				t.Errorf("Check = %v", err)
+			}
+			if tt.want != "" && (err == nil || err.Error() != tt.want) {
+				t.Errorf("Check = %v, want %q", err, tt.want)
+			}
+		})
 	}
 }

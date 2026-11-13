@@ -2,27 +2,13 @@ metadata:
   description: Kubernetes deployments
   requires: [kubectl]
 
-source:
-  command: kubectl get deployments --all-namespaces --no-headers 2>/dev/null | awk '{print $1"\t"$2"\t"$3"\t"$4"\t"$5}'
-  delimiter: "\t"
-
-preview:
-  command: kubectl describe deployment {2} -n {1} 2>/dev/null
-  window: right:55%
-
-ui:
-  header: k8s deployments
-
-navigation:
-  ctrl-o: {channel: k8s-pods, label: pods}
-  ctrl-v: {channel: k8s-svc, label: services}
-
-actions:
-  ctrl-r:
-    mode: execute-silent
-    label: restart
-    command: kubectl rollout restart deployment/{2} -n {1}
-  ctrl-t:
-    mode: execute-silent
-    label: scale to 1
-    command: kubectl scale deployment/{2} -n {1} --replicas=1
+steps:
+  - title: k8s deployments
+    source: kubectl get deployments --all-namespaces --no-headers 2>/dev/null | awk '{print $1"\t"$2"\t"$3"\t"$4"\t"$5}'
+    preview: kubectl describe deployment {2} -n {1} 2>/dev/null
+    preview_window: right:55%
+    keys:
+      ctrl-o: {do: "become:fzp k8s-pods", label: pods}
+      ctrl-v: {do: "become:fzp k8s-svc", label: services}
+      ctrl-r: {do: "execute-silent:kubectl rollout restart deployment/{2} -n {1}", label: restart}
+      ctrl-t: {do: "execute-silent:kubectl scale deployment/{2} -n {1} --replicas=1", label: scale to 1}

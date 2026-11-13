@@ -1,9 +1,7 @@
 metadata:
   description: Open repository on GitHub
   group: pane
-  target: required
   requires: [gh]
 
-run:
-  # Flow commands run in the target pane's directory.
-  command: gh browse
+# fzp runs in the pane's directory: the tmux binding opens it there.
+run: gh browse

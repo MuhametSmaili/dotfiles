@@ -1,17 +1,15 @@
 metadata:
   description: Copy a Git commit hash
   group: pane
-  target: required
   requires: [git]
 
 steps:
   - select: commit
     title: Choose a commit · latest 1,000 on this branch
-    source:
-      builtin: git.commits
-    preview:
-      command: git show --stat --color=always {id}
+    columns: [hash, summary, author]
+    show: [summary, author]
+    source: git log --max-count=1000 --format='%H%x09%h  %cs  %s%x09%an'
+    preview: git show --stat --color=always {1}
+    fzf: [--no-sort]
 
-run:
-  # -w also sets the system clipboard via OSC 52 (set-clipboard on).
-  command: tmux set-buffer -w "$FZP_STEP_COMMIT_HASH"
+run: printf %s "$FZP_STEP_COMMIT_HASH" | "$FZP_CONFIG_DIR/lib/copy.sh"

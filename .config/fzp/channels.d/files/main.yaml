@@ -2,47 +2,21 @@ metadata:
   description: Project files
   requires: [fd]
 
-source:
-  script: ./source.sh
-  delimiter: "\t"
-  ansi: true
-
-preview:
-  command: bat --color=always --style=plain --line-range :120 {2} 2>/dev/null || sed -n '1,120p' {2}
-
-ui:
-  header: files
-  prompt: "[files]> "
-
-navigation:
-  ctrl-r: {channel: git-log, label: git log}
-
-actions:
-  enter:
-    mode: become
-    label: edit
-    command: ${EDITOR:-nvim} {2}
-  ctrl-y:
-    mode: execute-silent
-    label: copy path
-    command: printf %s {2} | pbcopy
-  f3:
-    mode: become
-    label: paste path
-    script: ./paste-path.sh
-    args: "{2}"
-  ctrl-g:
-    mode: raw
-    label: grep these files
-    # {+f2} is a temporary file listing the paths; grep searches only them.
-    command: select-all+become(fzp --scope {+f2} grep)
-  alt-i:
-    mode: raw
-    label: toggle ignored
-    command: >-
-      transform:[[ $FZF_PROMPT == *+ign* ]] &&
-      echo "change-prompt([files]> )+reload(FZP_FILES_INCLUDE_IGNORED=0 $FZP_CHANNEL_DIR/source.sh)" ||
-      echo "change-prompt([files+ign]> )+reload(FZP_FILES_INCLUDE_IGNORED=1 $FZP_CHANNEL_DIR/source.sh)"
-
-fzf_options:
-  - --tabstop=1
+steps:
+  - title: files
+    source: '"$FZP_CHANNEL_DIR/source.sh"'
+    preview: bat --color=always --style=plain --line-range :120 {2} 2>/dev/null || sed -n '1,120p' {2}
+    fzf: [--ansi, --multi, --tabstop=1]
+    keys:
+      start: {do: 'transform:[[ ${FZP_FILES_INCLUDE_IGNORED:-0} == 1 ]] && echo "change-prompt([files+ign]> )"'}
+      enter: {do: "become:${EDITOR:-nvim} {+2}", label: edit}
+      ctrl-y: {do: 'execute-silent:printf %s {2} | "$FZP_CONFIG_DIR/lib/copy.sh"', label: copy path}
+      f3: {do: 'become:"$FZP_CHANNEL_DIR/paste-path.sh" {2}', label: paste path}
+      # grep gets this query and searches the files it matches.
+      ctrl-g: {do: "become:fzp --input-query {q} grep", label: grep these files}
+      ctrl-r: {do: "become:fzp git-log", label: git log}
+      # Restart with the toggle in the environment, so that grep's replay of
+      # this list (fzp --filter) includes ignored files too.
+      alt-i:
+        do: 'become:FZP_FILES_INCLUDE_IGNORED=$(( 1 - ${FZP_FILES_INCLUDE_IGNORED:-0} )) fzp --query {q} files'
+        label: toggle ignored

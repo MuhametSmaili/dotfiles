@@ -2,23 +2,12 @@ metadata:
   description: Kubernetes services
   requires: [kubectl]
 
-source:
-  command: kubectl get svc --all-namespaces --no-headers 2>/dev/null | awk '{print $1"\t"$2"\t"$3"\t"$4"\t"$5}'
-  delimiter: "\t"
-
-preview:
-  command: kubectl describe svc {2} -n {1} 2>/dev/null
-  window: right:55%
-
-ui:
-  header: k8s services
-
-navigation:
-  ctrl-o: {channel: k8s-pods, label: pods}
-  ctrl-t: {channel: k8s-deploy, label: deployments}
-
-actions:
-  f2:
-    mode: become
-    label: port-forward
-    command: kubectl port-forward svc/{2} -n {1} 8080:80
+steps:
+  - title: k8s services
+    source: kubectl get svc --all-namespaces --no-headers 2>/dev/null | awk '{print $1"\t"$2"\t"$3"\t"$4"\t"$5}'
+    preview: kubectl describe svc {2} -n {1} 2>/dev/null
+    preview_window: right:55%
+    keys:
+      ctrl-o: {do: "become:fzp k8s-pods", label: pods}
+      ctrl-t: {do: "become:fzp k8s-deploy", label: deployments}
+      f2: {do: "become:kubectl port-forward svc/{2} -n {1} 8080:80", label: port-forward}

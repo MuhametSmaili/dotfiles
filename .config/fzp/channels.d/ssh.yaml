@@ -2,17 +2,9 @@ metadata:
   description: SSH hosts
   requires: [ssh]
 
-source:
-  command: grep '^Host ' ~/.ssh/config ~/.ssh/config.* 2>/dev/null | awk '{print $2}' | grep -v '*' | sort -u
-
-preview:
-  command: ssh -G {} 2>/dev/null | head -20
-
-ui:
-  header: ssh hosts
-
-actions:
-  enter:
-    mode: become
-    label: connect
-    command: ssh {}
+steps:
+  - title: ssh hosts
+    source: grep '^Host ' ~/.ssh/config ~/.ssh/config.* 2>/dev/null | awk '{print $2}' | grep -v '*' | sort -u
+    preview: ssh -G {} 2>/dev/null | head -20
+    keys:
+      enter: {do: "become:ssh {}", label: connect}

@@ -1,18 +1,9 @@
 metadata:
   description: Running processes
 
-source:
-  command: ps -eo pid,user,%cpu,%mem,command | tail -n +2 | sort -k3 -rn
-  no_sort: true
-
-preview:
-  command: echo {}
-
-ui:
-  header: processes
-
-actions:
-  ctrl-k:
-    mode: execute-silent
-    label: kill process
-    command: kill {1}
+steps:
+  - title: processes
+    source: ps -eo pid,user,%cpu,%mem,command | tail -n +2 | sort -k3 -rn
+    fzf: [--no-sort]
+    keys:
+      ctrl-k: {do: "execute-silent(kill {1})+reload:eval \"$FZP_SOURCE\"", label: kill process}

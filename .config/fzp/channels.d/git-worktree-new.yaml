@@ -1,50 +1,48 @@
 metadata:
   description: Create a worktree and open a shell
   group: pane
-  target: required
   requires: [git]
+  requires_env: [FZP_PANE_ID, FZP_SESSION_ID]
 
 steps:
   - select: branch
-    title: New scratch branch, unused local branch or remote branch
+    title: New scratch branch, or a local branch without a worktree
+    columns: [name, info]
     items:
-      - {id: scratch, label: "New scratch branch (try/<date>) from this pane's HEAD"}
-    source:
-      builtin: git.branches
-      with: {exclude_checked_out: true, exclude_shadowed_remotes: true}
+      - {name: "<scratch>", info: "New scratch branch try/<date> from HEAD"}
+    source: >-
+      git for-each-ref --format='%(refname:short)%09%(worktreepath)%09%(committerdate:relative)  %(subject)' refs/heads
+      | awk -F '\t' '$2 == "" { print $1 "\t" $3 }'
 
   - select: place
     title: Open shell in…
+    columns: [kind, focus, label]
+    show: [label]
     items:
-      - {id: window-focus, label: New window and focus, kind: window, focus: true}
-      - {id: horizontal-focus, label: Split side by side and focus, kind: horizontal, focus: true}
-      - {id: vertical-focus, label: Split stacked and focus, kind: vertical, focus: true}
-      - {id: window, label: New window (in background), kind: window, focus: false}
-      - {id: horizontal, label: Split side by side (keep focus), kind: horizontal, focus: false}
-      - {id: vertical, label: Split stacked (keep focus), kind: vertical, focus: false}
+      - {kind: window, focus: "true", label: New window and focus}
+      - {kind: horizontal, focus: "true", label: Split side by side and focus}
+      - {kind: vertical, focus: "true", label: Split stacked and focus}
+      - {kind: window, focus: "false", label: New window (in background)}
+      - {kind: horizontal, focus: "false", label: Split side by side (keep focus)}
+      - {kind: vertical, focus: "false", label: Split stacked (keep focus)}
 
-run:
-  # Worktrees go next to the main checkout: ../<repo>-worktrees/<branch>.
-  command: |
-    set -euo pipefail
-    common=$(git rev-parse --path-format=absolute --git-common-dir)
-    main=${common%/.git}
+# Worktrees go next to the main checkout: ../<repo>-worktrees/<branch>.
+run: |
+  set -euo pipefail
+  common=$(git rev-parse --path-format=absolute --git-common-dir)
+  main=${common%/.git}
 
-    if [[ "$FZP_STEP_BRANCH_ID" == scratch ]]; then
-      branch="try/$(date +%Y%m%d-%H%M%S)"
-      add=(-b "$branch")
-      start=HEAD
-    elif [[ -n "$FZP_STEP_BRANCH_REMOTE" ]]; then
-      branch=$FZP_STEP_BRANCH_BRANCH
-      add=(--track -b "$branch")
-      start=$FZP_STEP_BRANCH_REF
-    else
-      branch=$FZP_STEP_BRANCH_BRANCH
-      add=()
-      start=$branch
-    fi
+  if [[ "$FZP_STEP_BRANCH_NAME" == "<scratch>" ]]; then
+    branch="try/$(date +%Y%m%d-%H%M%S)"
+    new=(-b "$branch")
+    start=HEAD
+  else
+    branch=$FZP_STEP_BRANCH_NAME
+    new=()
+    start=$branch
+  fi
 
-    # ${add[@]+...}: bash 3.2 treats an empty array as unset under set -u.
-    path="$(dirname "$main")/$(basename "$main")-worktrees/$(printf %s "$branch" | tr -c 'A-Za-z0-9._-' -)"
-    git worktree add ${add[@]+"${add[@]}"} "$path" "$start"
-    "$FZP_CONFIG_DIR/lib/open-shell.sh" "$path" "$branch"
+  path="$(dirname "$main")/$(basename "$main")-worktrees/$(printf %s "$branch" | tr -c 'A-Za-z0-9._-' -)"
+  # ${new[@]+...}: bash 3.2 treats an empty array as unset under set -u.
+  git worktree add ${new[@]+"${new[@]}"} "$path" "$start"
+  "$FZP_CONFIG_DIR/lib/open-shell.sh" "$path" "$branch"

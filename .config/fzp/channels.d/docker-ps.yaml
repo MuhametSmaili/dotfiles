@@ -2,30 +2,12 @@ metadata:
   description: Running docker containers
   requires: [docker]
 
-source:
-  command: docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}'
-  delimiter: "\t"
-
-preview:
-  command: docker inspect {1}
-  window: right:50%
-
-ui:
-  header: docker containers
-
-navigation:
-  ctrl-i: {channel: docker-images, label: images}
-
-actions:
-  ctrl-l:
-    mode: become
-    label: logs
-    command: docker logs --tail 100 -f {1}
-  ctrl-e:
-    mode: become
-    label: exec sh
-    command: docker exec -it {1} sh
-  ctrl-r:
-    mode: execute-silent
-    label: restart
-    command: docker restart {1}
+steps:
+  - title: docker containers
+    source: docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}'
+    preview: docker inspect {1}
+    keys:
+      ctrl-o: {do: "become:fzp docker-images", label: images}
+      ctrl-l: {do: "become:docker logs --tail 100 -f {1}", label: logs}
+      ctrl-e: {do: "become:docker exec -it {1} sh", label: exec sh}
+      ctrl-r: {do: "execute-silent:docker restart {1}", label: restart}

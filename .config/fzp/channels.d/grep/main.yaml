@@ -2,27 +2,19 @@ metadata:
   description: Search text in project
   requires: [rg]
 
-source:
-  command: "true"
-  delimiter: ":"
+# Opened from files with a query: list the files it matches, once, so that each
+# keystroke below only runs rg. search.sh reads FZP_SCOPE_FILE.
+scope: fzp --filter "$FZP_INPUT_QUERY" files | cut -f2
 
-preview:
-  command: bat --color=always --style=plain --highlight-line {2} {1} 2>/dev/null || echo {}
-  window: right:50%:+{2}-5
-
-ui:
-  header: grep
-
-navigation:
-  ctrl-o: {channel: files, label: files}
-
-actions:
-  enter:
-    mode: become
-    label: edit
-    command: ${EDITOR:-nvim} +{2} {1}
-
-fzf_options:
-  - --disabled
-  - --bind
-  - change:reload:$FZP_CHANNEL_DIR/search.sh {q}
+steps:
+  - title: grep
+    source: "true"
+    columns: [file, line, text]
+    preview: bat --color=always --style=plain --highlight-line {2} {1} 2>/dev/null || echo {}
+    preview_window: right:50%:+{2}-5
+    fzf: [--ansi, --disabled, --bind, 'change:reload:"$FZP_CHANNEL_DIR/search.sh" {q}']
+    keys:
+      enter: {do: "become:${EDITOR:-nvim} +{2} {1}", label: edit}
+      ctrl-r: {do: 'reload:"$FZP_CHANNEL_DIR/search.sh" {q}', label: reload}
+      # Back to files with the query that opened grep.
+      ctrl-o: {do: 'become:fzp --query "$FZP_INPUT_QUERY" files', label: files}

@@ -1,26 +1,29 @@
 metadata:
   description: Open an existing worktree
   group: pane
-  target: required
   requires: [git]
+  requires_env: [FZP_PANE_ID, FZP_SESSION_ID]
 
 steps:
   - select: worktree
-    title: Choose another worktree of this pane's repository
-    source:
-      builtin: git.worktrees
-      with: {exclude_current: true}
+    title: Choose another worktree of this repository
+    columns: [path]
+    # Every worktree except the one fzp was opened in.
+    source: >-
+      git worktree list --porcelain
+      | sed -n 's/^worktree //p'
+      | grep -vxF "$(git rev-parse --show-toplevel)"
 
   - select: place
     title: Open shell in…
+    columns: [kind, focus, label]
+    show: [label]
     items:
-      - {id: window-focus, label: New window and focus, kind: window, focus: true}
-      - {id: horizontal-focus, label: Split side by side and focus, kind: horizontal, focus: true}
-      - {id: vertical-focus, label: Split stacked and focus, kind: vertical, focus: true}
-      - {id: window, label: New window (in background), kind: window, focus: false}
-      - {id: horizontal, label: Split side by side (keep focus), kind: horizontal, focus: false}
-      - {id: vertical, label: Split stacked (keep focus), kind: vertical, focus: false}
+      - {kind: window, focus: "true", label: New window and focus}
+      - {kind: horizontal, focus: "true", label: Split side by side and focus}
+      - {kind: vertical, focus: "true", label: Split stacked and focus}
+      - {kind: window, focus: "false", label: New window (in background)}
+      - {kind: horizontal, focus: "false", label: Split side by side (keep focus)}
+      - {kind: vertical, focus: "false", label: Split stacked (keep focus)}
 
-run:
-  command: |
-    "$FZP_CONFIG_DIR/lib/open-shell.sh" "$FZP_STEP_WORKTREE_PATH" "$FZP_STEP_WORKTREE_LABEL"
+run: '"$FZP_CONFIG_DIR/lib/open-shell.sh" "$FZP_STEP_WORKTREE_PATH"'
