@@ -20,7 +20,8 @@ import (
 // Metadata is the metadata: block of a channel.
 type Metadata struct {
 	Description string `yaml:"description"`
-	Group       string `yaml:"group"`
+	// Group is the category shown in the root menu; empty stays at the root.
+	Group string `yaml:"group"`
 	// Requires lists tools that must be on PATH.
 	Requires []string `yaml:"requires"`
 	// RequiresEnv lists variables the caller must set, such as the pane

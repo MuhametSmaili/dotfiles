@@ -1,5 +1,6 @@
 metadata:
   description: Git branches
+  group: Git
   requires: [git]
 
 steps:

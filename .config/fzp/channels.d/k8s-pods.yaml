@@ -1,5 +1,6 @@
 metadata:
   description: Kubernetes pods
+  group: Kubernetes
   requires: [kubectl]
 
 steps:

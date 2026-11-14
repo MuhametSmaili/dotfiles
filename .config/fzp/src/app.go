@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"fzp/internal/catalog"
@@ -57,13 +58,26 @@ func quiet(err error) error {
 	return err
 }
 
-// menu lets the user pick a channel, and shows the menu again when a channel
-// is left with Esc on its first step.
+// menu browses groups, then channels. Esc returns to the parent menu;
+// an explicit --group makes that group's menu the root.
 func (a *app) menu(ctx context.Context, opts options) error {
+	group := opts.group
 	for {
-		name, err := a.pickChannel(ctx, opts)
+		query := ""
+		if group == opts.group {
+			query = opts.query
+		}
+		name, err := a.pickChannel(ctx, options{group: group, query: query})
+		if errors.Is(err, channel.ErrBackedOut) && group != "" && opts.group == "" {
+			group = ""
+			continue
+		}
 		if err != nil || name == "" {
 			return quiet(err)
+		}
+		if next, ok := strings.CutPrefix(name, "group:"); ok {
+			group = next
+			continue
 		}
 
 		err = a.runChannel(ctx, name, options{inputQuery: opts.inputQuery})
@@ -73,31 +87,56 @@ func (a *app) menu(ctx context.Context, opts options) error {
 	}
 }
 
-// pickChannel shows the channel menu as a one-step channel. Channels whose
+// pickChannel shows groups at the root and channels inside each group.
+// Ungrouped channels remain directly accessible at the root. Channels whose
 // YAML is unreadable are left out; fzp --check reports them.
 func (a *app) pickChannel(ctx context.Context, opts options) (string, error) {
 	channels, _ := catalog.List(a.paths.channels)
+	step := menuStep(channels, opts.group)
+	if len(step.Items) == 0 {
+		return "", fmt.Errorf("no channels in %s (group %q)", a.paths.channels, opts.group)
+	}
 
+	return channel.Pick(ctx, channel.Options{
+		Name: cmp.Or(opts.group, "channels"), Height: a.height, Query: opts.query, Env: a.environ,
+	}, step)
+}
+
+func menuStep(channels []catalog.Channel, group string) channel.Step {
 	var items []map[string]string
+	groups := map[string]int{}
 	for _, c := range channels {
-		if opts.group == "" || c.Metadata.Group == opts.group {
-			description := strings.NewReplacer("\t", " ", "\n", " ").Replace(c.Metadata.Description)
-			items = append(items, map[string]string{"name": c.Name, "description": description, "path": c.Path})
+		if group != "" && !strings.EqualFold(c.Metadata.Group, group) {
+			continue
 		}
+		if group == "" && c.Metadata.Group != "" {
+			if i, ok := groups[c.Metadata.Group]; ok {
+				items[i]["description"] += ", " + c.Name
+			} else {
+				groups[c.Metadata.Group] = len(items)
+				items = append(items, map[string]string{
+					"id": "group:" + c.Metadata.Group, "name": c.Metadata.Group, "description": c.Name,
+				})
+			}
+			continue
+		}
+		description := strings.NewReplacer("\t", " ", "\n", " ").Replace(c.Metadata.Description)
+		items = append(items, map[string]string{"id": c.Name, "name": c.Name, "description": description, "path": c.Path})
 	}
-
-	if len(items) == 0 {
-		return "", fmt.Errorf("no channels in %s", a.paths.channels)
-	}
-
-	label := cmp.Or(opts.group, "channel")
-	return channel.Pick(ctx, channel.Options{Name: label, Height: a.height, Query: opts.query, Env: a.environ}, channel.Step{
-		Title:   "pick a " + label,
-		Items:   items,
-		Columns: []string{"name", "description", "path"},
-		Show:    []string{"name", "description"},
-		Preview: "bat --color=always --style=plain {3} 2>/dev/null || cat {3}",
+	slices.SortFunc(items, func(a, b map[string]string) int {
+		return strings.Compare(strings.ToLower(a["name"]), strings.ToLower(b["name"]))
 	})
+	step := channel.Step{
+		Title:   "pick a category",
+		Items:   items,
+		Columns: []string{"id", "name", "description", "path"},
+		Show:    []string{"name", "description"},
+	}
+	if group != "" {
+		step.Title = group + " / pick a channel"
+		step.Preview = "bat --color=always --style=plain {4} 2>/dev/null || cat {4}"
+	}
+	return step
 }
 
 func (a *app) runChannel(ctx context.Context, name string, opts options) error {

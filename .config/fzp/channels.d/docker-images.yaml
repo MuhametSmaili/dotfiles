@@ -1,5 +1,6 @@
 metadata:
   description: Docker images
+  group: Docker
   requires: [docker]
 
 steps:

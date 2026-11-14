@@ -19,16 +19,16 @@ import (
 
 const usage = `Usage: fzp [flags] [channel]
 
-  fzp                    pick a channel, then run it
+  fzp                    pick a category, then a channel
   fzp files              run the files channel
-  fzp --group pane       pick among channels whose metadata.group is "pane"
+  fzp --group Git        open the Git category directly
   fzp --list             list channel names
   fzp --check            validate every channel
   fzp --filter Q files   print the rows of files' first step that match Q
 
 Flags:
   --query TEXT           initial query
-  --group GROUP          limit the channel menu to one metadata.group
+  --group GROUP          open one metadata.group (case-insensitive)
   --input-query TEXT     query handed over by another channel, e.g. a key
                          become:fzp --input-query {q} grep; exported as
                          FZP_INPUT_QUERY, and the channel's scope command runs

@@ -1,6 +1,6 @@
 metadata:
   description: Copy a Git commit hash
-  group: pane
+  group: Git
   requires: [git]
 
 steps:

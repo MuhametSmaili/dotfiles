@@ -1,5 +1,6 @@
 metadata:
   description: SSH hosts
+  group: Network
   requires: [ssh]
 
 steps:

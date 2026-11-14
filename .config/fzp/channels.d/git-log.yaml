@@ -1,5 +1,6 @@
 metadata:
   description: Git commit log
+  group: Git
   requires: [git]
 
 steps:

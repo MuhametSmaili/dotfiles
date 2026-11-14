@@ -1,5 +1,6 @@
 metadata:
   description: Kubernetes services
+  group: Kubernetes
   requires: [kubectl]
 
 steps:

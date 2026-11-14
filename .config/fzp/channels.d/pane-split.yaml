@@ -1,6 +1,6 @@
 metadata:
   description: Split pane with a new shell
-  group: pane
+  group: Tmux
   requires_env: [FZP_PANE_ID, FZP_PANE_CWD]
 
 steps:

@@ -1,6 +1,6 @@
 metadata:
   description: Create a worktree and open a shell
-  group: pane
+  group: Git
   requires: [git]
   requires_env: [FZP_PANE_ID, FZP_SESSION_ID]
 

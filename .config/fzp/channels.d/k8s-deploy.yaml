@@ -1,5 +1,6 @@
 metadata:
   description: Kubernetes deployments
+  group: Kubernetes
   requires: [kubectl]
 
 steps:

@@ -34,7 +34,7 @@ var (
 	stepHelp = []hint{{"enter", "select"}, {"esc", "back"}, {"ctrl-r", "reload"}}
 	lastHelp = []hint{{"enter", "run"}, {"esc", "back"}, {"ctrl-r", "reload"}}
 	askHelp  = []hint{{"enter", "choose"}, {"esc", "back"}}
-	menuHelp = []hint{{"enter", "open"}, {"esc", "quit"}}
+	menuHelp = []hint{{"enter", "open"}, {"esc", "back"}, {"ctrl-c", "quit"}}
 )
 
 // Run shows the steps until the command succeeds, the last pick is printed,
@@ -66,8 +66,8 @@ type runner struct {
 	show func(context.Context, screen) (answer, error)
 }
 
-// Pick shows one step and returns the first column of the picked row, or ""
-// when the user left without picking.
+// Pick shows one menu and returns the first column of the picked row.
+// Esc returns ErrBackedOut; Ctrl+C returns ErrQuit.
 func Pick(ctx context.Context, o Options, step Step) (string, error) {
 	got, err := screen{
 		step:   step,
@@ -77,10 +77,17 @@ func Pick(ctx context.Context, o Options, step Step) (string, error) {
 		help:   menuHelp,
 		env:    o.Env,
 	}.show(ctx)
-	if err != nil || got.outcome != picked {
+	if err != nil {
 		return "", err
 	}
-	return got.rows[0][0], nil
+	switch got.outcome {
+	case picked:
+		return got.rows[0][0], nil
+	case back:
+		return "", ErrBackedOut
+	default:
+		return "", ErrQuit
+	}
 }
 
 func (r *runner) run(ctx context.Context) error {

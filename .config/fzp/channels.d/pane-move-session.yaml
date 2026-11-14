@@ -1,6 +1,6 @@
 metadata:
   description: Move pane to another session and focus
-  group: pane
+  group: Tmux
   requires_env: [FZP_PANE_ID, FZP_SESSION_ID]
 
 steps:

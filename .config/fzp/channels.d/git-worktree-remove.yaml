@@ -1,6 +1,6 @@
 metadata:
   description: Remove a worktree (the branch is kept)
-  group: pane
+  group: Git
   requires: [git]
 
 steps:

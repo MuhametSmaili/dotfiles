@@ -1,5 +1,6 @@
 metadata:
   description: Search text in project
+  group: Files
   requires: [rg]
 
 # Opened from files with a query: list the files it matches, once, so that each

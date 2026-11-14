@@ -1,6 +1,6 @@
 metadata:
   description: Change window layout
-  group: pane
+  group: Tmux
   requires_env: [FZP_PANE_ID]
 
 steps:

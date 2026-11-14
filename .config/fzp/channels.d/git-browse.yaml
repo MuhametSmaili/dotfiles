@@ -1,6 +1,6 @@
 metadata:
   description: Open repository on GitHub
-  group: pane
+  group: Git
   requires: [gh]
 
 # fzp runs in the pane's directory: the tmux binding opens it there.
