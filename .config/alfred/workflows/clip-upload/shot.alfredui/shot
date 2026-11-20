@@ -1,0 +1,73 @@
+#!/bin/bash
+set -eu
+umask 077
+export PATH="${PATH:-/usr/bin:/bin}:/opt/homebrew/bin:/usr/local/bin:/usr/sbin"
+export CLIP_UPLOAD_FEEDBACK=inline
+temp=${TMPDIR:-$HOME/Library/Caches}
+base="${temp%/}/com.muhametsmaili.dotfiles.clip-upload"
+
+# Only pass a private capture identifier between workflow objects. Neither
+# cleanup nor confirmation accepts an arbitrary filesystem path from the UI.
+token=${2:-}
+capture_context() {
+    jq -n --arg token "$1" --arg profile "$profile" --arg dest "$destination" --arg error "$2" \
+        '{alfredworkflow:{arg:$token, variables:{shot_profile:$profile,shot_destination:$dest,shot_error:$error}}}'
+}
+show_error() {
+    jq -n --arg message "$1" \
+        '{update:{ids:{status:{text:"Nothing sent"},detail:{text:$message},done:{enabled:true}}}}'
+}
+case "$1" in
+capture)
+    profile=${2:-}
+    destination=""
+    if ! destination=$("$HOME/.config/scripts/clip-upload" "$profile" --destination); then
+        capture_context "" "No valid SSH destination for this profile. Check ~/.zshrc.local."
+        exit 0
+    fi
+    mkdir -p "$base"
+    dir=$(mktemp -d "$base/shot.XXXXXXXX")
+    trap 'rm -f "$dir/capture.png"; rmdir "$dir" 2>/dev/null || :' EXIT
+    # No -c: only this invocation's output file can become a preview.
+    if ! error=$(screencapture -i -s -x -t png "$dir/capture.png" 2>&1) || [[ ! -s "$dir/capture.png" ]]; then
+        capture_context "" "$error"
+        exit 0
+    fi
+    capture_context "${dir##*/}" ""
+    trap - EXIT  # preview now owns the file
+    ;;
+review|send|discard)
+    if [[ ! "$token" =~ ^shot\.[A-Za-z0-9]{8}$ ]]; then
+        case "$1" in
+            review) if [[ -n "${3:-}" ]]; then show_error "$3"; else printf '%s\n' '{"finish":{}}'; fi ;;
+            send) show_error "No capture to send." ;;
+        esac
+        exit 0
+    fi
+    dir="$base/$token"
+    case "$1" in
+        review)
+            if [[ ! -s "$dir/capture.png" ]]; then show_error "Capture no longer available."; exit 0; fi
+            if [[ -z "${4:-}" ]]; then show_error "Destination unavailable."; exit 0; fi
+            jq -n --arg file "$dir/capture.png" --arg dest "$4" \
+                '{update:{ids:{preview:{image:{type:"file",src:$file}},status:{text:"Review screenshot"},detail:{text:("Send to "+$dest+"  ·  Esc to discard")},send:{enabled:true}}}}'
+            ;;
+        discard)
+            rm -f "$dir/capture.png"
+            rmdir "$dir" 2>/dev/null || : # send owns the directory once confirmed
+            ;;
+        send)
+            if [[ -z "${4:-}" ]]; then show_error "Destination unavailable."; exit 0; fi
+            # Claim the exact preview once, before SSH. Closing the panel
+            # after confirmation cannot discard an in-flight upload's source.
+            if ! mv "$dir/capture.png" "$dir/sending.png" 2>/dev/null; then
+                show_error "Capture was discarded or already sent."; exit 0
+            fi
+            trap 'rm -f "$dir/sending.png"; rmdir "$dir" 2>/dev/null || :' EXIT
+            CLIP_UPLOAD_EXPECT_DESTINATION="$4" \
+                "$(dirname "$0")/../status.alfredui/upload" "$3" --file "$dir/sending.png"
+            ;;
+    esac
+    ;;
+*) exit 2 ;;
+esac

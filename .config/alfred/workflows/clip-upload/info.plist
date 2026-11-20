@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>bundleid</key><string>com.muhametsmaili.dotfiles.clip-upload</string>
+	<key>name</key><string>Upload Clipboard Image</string>
+	<key>createdby</key><string>Muhamet Smaili</string>
+	<key>version</key><string>1.2</string>
+	<key>description</key><string>Send a clipboard image over SSH and copy its remote path or URL.</string>
+	<key>readme</key>
+	<string>Type `clip` and press Return to upload to your default profile. Use `clip PROFILE` to choose another configured destination. Assign the optional hotkey to upload directly to the default profile.
+
+Use `shot [PROFILE]` to select a screen region and preview the image and destination. Press Return to send or Escape to discard. macOS may ask for Screen Recording permission for Alfred.
+
+Alfred shows the upload status and the copied path or error. Requires the dotfiles `~/.config/scripts/clip-upload`, jq, pngpaste and an SSH profile configured in `~/.zshrc.local`. When remote clipboard support succeeds, Ctrl+V on the server pastes the image.</string>
+	<key>objects</key>
+	<array>
+		<dict>
+			<key>uid</key><string>910A0C48-649B-4E87-BF1D-62D4CB2F70D0</string>
+			<key>type</key><string>alfred.workflow.input.keyword</string>
+			<key>version</key><integer>1</integer>
+			<key>config</key>
+			<dict>
+				<key>keyword</key><string>clip</string>
+				<key>argumenttype</key><integer>1</integer>
+				<key>withspace</key><true/>
+				<key>text</key><string>Upload Clipboard Image</string>
+				<key>subtext</key><string>Return for default destination, or type a profile name</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>uid</key><string>D152A7DE-6897-4740-9EE1-D4AAFD600629</string>
+			<key>type</key><string>alfred.workflow.trigger.hotkey</string>
+			<key>version</key><integer>2</integer>
+			<key>config</key>
+			<dict>
+				<key>action</key><integer>0</integer>
+				<key>argument</key><integer>0</integer>
+				<key>modsmode</key><integer>0</integer>
+			</dict>
+		</dict>
+		<dict>
+			<key>uid</key><string>41B43C32-1BF5-4036-9B19-B7762995066D</string>
+			<key>type</key><string>alfred.workflow.userinterface.alfredui</string>
+			<key>version</key><integer>1</integer>
+			<key>config</key>
+			<dict>
+				<key>path</key><string>status.alfredui</string>
+				<key>launchmode</key><integer>0</integer>
+				<key>stackview</key><false/>
+			</dict>
+		</dict>
+		<dict>
+			<key>uid</key><string>D8602AF9-4525-4D5D-8079-9951E03E76E3</string>
+			<key>type</key><string>alfred.workflow.input.keyword</string>
+			<key>version</key><integer>1</integer>
+			<key>config</key><dict>
+				<key>keyword</key><string>shot</string>
+				<key>argumenttype</key><integer>1</integer>
+				<key>withspace</key><true/>
+				<key>text</key><string>Capture and Send Screenshot</string>
+				<key>subtext</key><string>Select an area, then review it before uploading</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>uid</key><string>51F4ECA4-196E-48CA-A0AE-D5B0CEB0A4D1</string>
+			<key>type</key><string>alfred.workflow.action.script</string>
+			<key>version</key><integer>2</integer>
+			<key>config</key><dict>
+				<key>type</key><integer>5</integer>
+				<key>scriptargtype</key><integer>1</integer>
+				<key>script</key><string>exec ./shot.alfredui/shot capture "$@"</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>uid</key><string>F29C14D3-902E-46A5-98FD-1F71D8318223</string>
+			<key>type</key><string>alfred.workflow.userinterface.alfredui</string>
+			<key>version</key><integer>1</integer>
+			<key>config</key><dict>
+				<key>path</key><string>shot.alfredui</string>
+				<key>launchmode</key><integer>0</integer>
+				<key>stackview</key><false/>
+			</dict>
+		</dict>
+	</array>
+	<key>connections</key>
+	<dict>
+		<key>D8602AF9-4525-4D5D-8079-9951E03E76E3</key>
+		<array><dict>
+			<key>destinationuid</key><string>51F4ECA4-196E-48CA-A0AE-D5B0CEB0A4D1</string>
+			<key>modifiers</key><integer>0</integer>
+			<key>vitoclose</key><false/>
+		</dict></array>
+		<key>51F4ECA4-196E-48CA-A0AE-D5B0CEB0A4D1</key>
+		<array><dict>
+			<key>destinationuid</key><string>F29C14D3-902E-46A5-98FD-1F71D8318223</string>
+			<key>modifiers</key><integer>0</integer>
+			<key>vitoclose</key><false/>
+		</dict></array>
+		<key>910A0C48-649B-4E87-BF1D-62D4CB2F70D0</key>
+		<array><dict>
+			<key>destinationuid</key><string>41B43C32-1BF5-4036-9B19-B7762995066D</string>
+			<key>modifiers</key><integer>0</integer>
+			<key>vitoclose</key><true/>
+		</dict></array>
+		<key>D152A7DE-6897-4740-9EE1-D4AAFD600629</key>
+		<array><dict>
+			<key>destinationuid</key><string>41B43C32-1BF5-4036-9B19-B7762995066D</string>
+			<key>modifiers</key><integer>0</integer>
+			<key>vitoclose</key><false/>
+		</dict></array>
+	</dict>
+	<key>uidata</key>
+	<dict>
+		<key>D8602AF9-4525-4D5D-8079-9951E03E76E3</key>
+		<dict><key>xpos</key><real>60</real><key>ypos</key><real>340</real></dict>
+		<key>51F4ECA4-196E-48CA-A0AE-D5B0CEB0A4D1</key>
+		<dict><key>xpos</key><real>210</real><key>ypos</key><real>340</real></dict>
+		<key>F29C14D3-902E-46A5-98FD-1F71D8318223</key>
+		<dict><key>xpos</key><real>360</real><key>ypos</key><real>340</real></dict>
+		<key>910A0C48-649B-4E87-BF1D-62D4CB2F70D0</key>
+		<dict><key>xpos</key><real>60</real><key>ypos</key><real>60</real></dict>
+		<key>D152A7DE-6897-4740-9EE1-D4AAFD600629</key>
+		<dict><key>xpos</key><real>60</real><key>ypos</key><real>190</real></dict>
+		<key>41B43C32-1BF5-4036-9B19-B7762995066D</key>
+		<dict><key>xpos</key><real>300</real><key>ypos</key><real>125</real></dict>
+	</dict>
+</dict>
+</plist>

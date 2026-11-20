@@ -10,6 +10,9 @@
 #
 # Usage:
 #   clip-upload [profile]
+#   clip-upload PROFILE --destination     print host:directory without uploading
+#   clip-upload PROFILE --file PATH       upload this PNG instead of the clipboard
+# Use an empty PROFILE argument for the default in the latter two forms.
 #
 # The remote file is written to  <DIR>/YYYY-MM-DD-HH-MM-SS.png  and a
 # stable symlink  <DIR>/latest.png  is updated to point at it, so an
@@ -47,8 +50,8 @@ export PATH="$HOME/opt/homebrew/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/b
 # Source personal profile config when the caller didn't already export it
 # (e.g. skhd, cron, launchd).
 if [[ -z "${CLIP_UPLOAD_PROFILE:-}" && -f "$HOME/.zshrc.local" ]]; then
-    # shellcheck disable=SC1091
     set +u
+    # shellcheck disable=SC1091
     source "$HOME/.zshrc.local" >/dev/null 2>&1 || true
     set -u
 fi
@@ -108,6 +111,8 @@ run_with_timeout() {
 }
 
 notify() {
+    # Inline callers display progress and the final outcome themselves.
+    [[ "${CLIP_UPLOAD_FEEDBACK:-}" != inline ]] || return 0
     # $1 = title, $2 = message. Values are passed as argv rather than
     # interpolated into the AppleScript source, so quotes/backslashes in
     # the message can't terminate the string or inject code.
@@ -208,12 +213,25 @@ CLIP_DISPLAY="${!disp_var-:99}"
 [[ "$CLIP_DISPLAY" =~ ^(:[0-9]{1,3})?$ ]] \
     || die "invalid display '$CLIP_DISPLAY' in ${disp_var} (expected e.g. :99, or empty)"
 
-# clip-display (lives next to this script) is sent along with the upload to
-# set up the server's headless clipboard.
-CLIP_DISPLAY_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/clip-display"
-if [[ -n "$CLIP_DISPLAY" && ! -r "$CLIP_DISPLAY_HELPER" ]]; then
-    warn "$CLIP_DISPLAY_HELPER not found; skipping remote clipboard"
-    CLIP_DISPLAY=""
+# Vicinae links to the Stow link. Resolve both absolute and relative file
+# links before looking for the helper beside the actual uploader.
+CLIP_DISPLAY_HELPER=""
+clip_note_missing=""
+if [[ -n "$CLIP_DISPLAY" ]]; then
+    script_path="${BASH_SOURCE[0]}"
+    while [[ -L "$script_path" ]]; do
+        target=$(readlink "$script_path")
+        case "$target" in
+            /*) script_path="$target" ;;
+            *)  script_path="$(dirname "$script_path")/$target" ;;
+        esac
+    done
+    CLIP_DISPLAY_HELPER="$(dirname "$script_path")/clip-display"
+    if [[ ! -r "$CLIP_DISPLAY_HELPER" ]]; then
+        warn "$CLIP_DISPLAY_HELPER not found; skipping remote clipboard"
+        clip_note_missing=" · remote clipboard skipped: clip-display missing"
+        CLIP_DISPLAY=""
+    fi
 fi
 
 [[ -n "$HOST" ]] || die "Profile '$PROFILE' has no host. Set ${host_var} in ~/.zshrc.local."
@@ -224,11 +242,25 @@ fi
 [[ "$DIR" =~ ^[A-Za-z0-9_~./-]+$ ]] \
     || die "unsafe remote directory '$DIR' in ${dir_var} (allowed: letters, digits, _ ~ . / -)"
 
+case "${2:-}" in
+    "") [[ $# -le 1 ]] || die "unexpected upload arguments" ;;
+    --destination)
+        [[ $# == 2 ]] || die "unexpected destination arguments"
+        printf '%s:%s\n' "$HOST" "$DIR"
+        exit 0 ;;
+    --file)
+        [[ $# == 3 && -f "$3" && -r "$3" ]] || die "Capture file is missing or unreadable"
+        [[ "${CLIP_UPLOAD_EXPECT_DESTINATION:-$HOST:$DIR}" == "$HOST:$DIR" ]] \
+            || die "Destination changed since preview; capture again to confirm"
+        ;;
+    *) die "unknown upload option: $2" ;;
+esac
+
 # Rewrite a leading ~ into a remote $HOME reference so the path can be
 # double-quoted on the far side and still expand to the user's home.
 case "$DIR" in
-    "~")   REMOTE_DIR='$HOME' ;;
-    "~/"*) REMOTE_DIR='$HOME/'"${DIR#\~/}" ;;
+    \~)   REMOTE_DIR="\$HOME" ;;
+    \~/*) REMOTE_DIR="\$HOME/${DIR#\~/}" ;;
     *)     REMOTE_DIR="$DIR" ;;
 esac
 
@@ -249,6 +281,10 @@ else
         LOCK_OWNED=true
     else
         notify "clip-upload" "Upload already in progress"
+        if [[ "${CLIP_UPLOAD_FEEDBACK:-}" == inline ]]; then
+            printf '%s\n' "Another upload is already running." >&2
+            exit 75
+        fi
         exit 0
     fi
 fi
@@ -263,7 +299,11 @@ echo "$$" > "$LOCKDIR/pid"
 WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/clip-upload.XXXXXX")"
 IMG="$WORKDIR/clip.png"
 
-if ! grab_clipboard_image "$IMG"; then
+if [[ "${2:-}" == --file ]]; then
+    cat < "$3" > "$IMG" || die "Could not read captured image"
+    [[ "$(od -An -tx1 -N8 "$IMG" | tr -d '[:space:]')" == 89504e470d0a1a0a ]] \
+        || die "Captured file is not a PNG"
+elif ! grab_clipboard_image "$IMG"; then
     die "No image on clipboard"
 fi
 
@@ -349,7 +389,7 @@ EOF
         *) die "upload to $HOST:$DIR/$FILENAME failed (exit $ssh_status)" ;;
     esac
 
-    local clip_note="" line
+    local clip_note="$clip_note_missing" line
     while IFS= read -r line; do
         case "$line" in
             "clip: ok") clip_note=" · Ctrl+V on ${HOST} pastes it" ;;
@@ -371,7 +411,11 @@ EOF
 
     copy_to_local_clipboard "$result"
     notify "Uploaded ✓" "$HOST:$remote_path${clip_note}"
-    printf '%s\n' "$result"
+    if [[ "${CLIP_UPLOAD_FEEDBACK:-}" == inline ]]; then
+        printf 'Copied: %s%s\n' "$result" "$clip_note"
+    else
+        printf '%s\n' "$result"
+    fi
 }
 
 if should_detach; then

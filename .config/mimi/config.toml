@@ -14,7 +14,7 @@ show_workspace_number = true
 focus_follows_mouse = false
 
 [border]
-enabled = true
+enabled = false
 width = 2
 placement = "outside"
 active_color = "#80ffffff" # white, about 50% opacity (AARRGGBB)

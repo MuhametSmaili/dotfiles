@@ -1,0 +1,30 @@
+{
+  "bundleid": "com.muhametsmaili.dotfiles.clip-upload.status",
+  "variablesconfig": { "profile": { "src": "args[0]", "default": "" } },
+  "window": {
+    "title": "Upload Clipboard Image",
+    "size": { "width": 540, "height": 180 },
+    "root": {
+      "type": "view", "layout": "border", "padding": 16, "spacing": 8,
+      "events": [{
+        "triggers": "launched",
+        "action": { "type": "script", "src": "upload", "args": ["{var:profile}"], "async": true }
+      }],
+      "components": [
+        {
+          "id": "status", "type": "label", "constraints": { "region": "top" },
+          "font": { "size": "large", "weight": "bold" }, "text": "Uploading…"
+        },
+        {
+          "id": "detail", "type": "label", "constraints": { "region": "centre" },
+          "linebreak": "wordwrap", "selectable": true, "text": "Sending the clipboard image to your SSH destination."
+        },
+        {
+          "id": "done", "type": "button", "constraints": { "region": "bottom" },
+          "text": "Done", "shortcut": "↩", "enabled": false,
+          "events": [{ "triggers": "actioned", "action": { "type": "json", "src": { "finish": {} } } }]
+        }
+      ]
+    }
+  }
+}

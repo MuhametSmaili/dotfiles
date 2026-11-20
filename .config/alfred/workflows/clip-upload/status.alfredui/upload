@@ -1,0 +1,18 @@
+#!/bin/bash
+# An Alfred UI script returns JSON actions on stdout. Keep uploader output
+# separate until the foreground job finishes (including remote clipboard setup).
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
+if ! command -v jq >/dev/null; then
+    printf '%s\n' '{"update":{"ids":{"status":{"text":"Upload failed"},"detail":{"text":"Install jq with brew install jq."},"done":{"enabled":true}}}}'
+    exit 0
+fi
+code=0
+detail=$(CLIP_UPLOAD_BACKGROUND=0 CLIP_UPLOAD_FEEDBACK=inline \
+    "$HOME/.config/scripts/clip-upload" "$@" 2>&1) || code=$?
+case $code in
+    0)  title="Uploaded" ;;
+    75) title="Upload already in progress" ;;
+    *)  title="Upload failed"; detail=${detail:-"The uploader exited with status $code."} ;;
+esac
+jq -n --arg title "$title" --arg detail "$detail" \
+    '{update:{ids:{status:{text:$title}, detail:{text:$detail}, done:{enabled:true}}}}'

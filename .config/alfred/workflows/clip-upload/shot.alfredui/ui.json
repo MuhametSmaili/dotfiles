@@ -1,0 +1,37 @@
+{
+  "bundleid": "com.muhametsmaili.dotfiles.clip-upload.shot",
+  "variablesconfig": {
+    "token": { "src": "args[0]", "default": "" },
+    "shot_profile": { "src": "variable", "default": "" },
+    "shot_destination": { "src": "variable", "default": "" },
+    "shot_error": { "src": "variable", "default": "" }
+  },
+  "window": {
+    "title": "Review screenshot",
+    "size": { "width": 700, "height": 470 },
+    "root": {
+      "type": "view", "layout": "border", "padding": 16, "spacing": 8,
+      "events": [
+        { "triggers": "preload", "action": { "type": "script", "src": "shot", "args": ["review", "{var:token}", "{var:shot_error}", "{var:shot_destination}"] } },
+        { "triggers": "quit", "action": { "type": "script", "src": "shot", "args": ["discard", "{var:token}"] } }
+      ],
+      "components": [
+        { "type": "label", "id": "status", "constraints": { "region": "top" }, "text": "Preparing preview…", "font": { "size": "large", "weight": "bold" } },
+        { "type": "imageview", "id": "preview", "constraints": { "region": "centre" }, "resize": "fit" },
+        {
+          "type": "view", "layout": "border", "constraints": { "region": "bottom" }, "spacing": 6,
+          "components": [
+            { "type": "label", "id": "detail", "constraints": { "region": "top" }, "selectable": true, "linebreak": "wordwrap" },
+            { "type": "button", "id": "done", "text": "Done", "constraints": { "region": "left" }, "enabled": false,
+              "events": [{ "triggers": "actioned", "action": { "type": "json", "src": { "finish": {} } } }] },
+            { "type": "button", "id": "send", "text": "Upload ↵", "shortcut": "↩", "constraints": { "region": "right" }, "enabled": false,
+              "events": [{ "triggers": "actioned", "action": [
+                { "type": "json", "src": { "update": { "ids": { "send": { "enabled": false }, "status": { "text": "Uploading…" }, "detail": { "text": "Sending to {var:shot_destination}" } } } } },
+                { "type": "script", "src": "shot", "args": ["send", "{var:token}", "{var:shot_profile}", "{var:shot_destination}"], "async": true }
+              ] }] }
+          ]
+        }
+      ]
+    }
+  }
+}
