@@ -78,6 +78,19 @@
         }
       }
     },
+    "ai": {
+      "preferences": {
+        "providers": {
+          "opencode": {
+            "type": "opencode",
+            "fields": {}
+          }
+        },
+        "defaultModel": "opencode:opencode/deepseek-v4.1-flash",
+        "instructions": "",
+        "enableTools": true
+      }
+    },
     "browser-extension": {
       "enabled": false,
       "entrypoints": {
@@ -103,7 +116,7 @@
       }
     },
     "manage-shortcuts": {
-      "enabled": false
+      "enabled": true
     },
     "raycast-compat": {
       "enabled": true
@@ -111,6 +124,28 @@
     "scripts": {
       "preferences": {
         "customDirs": ["/Users/esmamuh/dotfiles/.config/scripts/"]
+      }
+    },
+    "shortcuts": {
+      "entrypoints": {
+        "sct_screen_record": {
+          "alias": "sr"
+        },
+        "sct_shottr_area": {
+          "alias": "sa"
+        },
+        "sct_shottr_fullscreen": {
+          "alias": "sf"
+        },
+        "sct_shottr_ocr": {
+          "alias": "so"
+        },
+        "sct_shottr_scrolling": {
+          "alias": "ss"
+        },
+        "sct_shottr_window": {
+          "alias": "sw"
+        }
       }
     },
     "snippets": {

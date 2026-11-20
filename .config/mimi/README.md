@@ -84,3 +84,11 @@ Saving `config.toml` also reloads it automatically. After editing the resident
 `layout.py`, use `mimi services restart`; restarting resets remembered per-Space
 layouts, window order, and split directions. Test Space switching directly if needed with
 `mimi action space 2`—a successful doctor check alone does not prove switching.
+
+## Resetting the layout
+
+```sh
+mimi tiling reset          # add --all for every Space
+mimi tiling cmd layout bsp
+mimi tiling relayout
+```

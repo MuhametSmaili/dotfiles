@@ -3,9 +3,32 @@ set -euo pipefail
 
 source "$HELPERS_DIR/utils.sh"
 source "$HELPERS_DIR/pi-agent.sh"
-source "$HELPERS_DIR/kiro.sh"
 
-run_cmd mkdir -p ~/.config/zsh ~/.config/tmux
+# Stow links a folder as a whole when it is not in $HOME yet.
+# Apps write state to these folders, so make them first. Then stow links each file.
+PER_FILE_DIRS=(
+	.config/zsh
+	.config/tmux # TPM plugins
+	.config/hetki # workspaces/
+	.config/gh # hosts.yml has the GitHub login
+	.ssh # known_hosts, config.work, 1Password/, agent/
+	.kiro/agents
+	.kiro/settings
+	.pi/agent/extensions
+	.pi/agent/themes
+)
+run_cmd mkdir -p "${PER_FILE_DIRS[@]/#/$HOME/}"
+
+# Apps write to these files, so a link does not work. Copy them one time.
+# Each item is "file in dotfiles:file in $HOME".
+COPY_ONCE=(
+	.kiro/settings/cli.json:.kiro/settings/cli.json
+	.config/vicinae/shortcuts.json:.local/share/vicinae/shortcuts/shortcuts.json
+)
+for item in "${COPY_ONCE[@]}"; do
+	src="$DOTFILES_DIR/${item%%:*}" dst="$HOME/${item#*:}"
+	[[ -e "$dst" ]] || { run_cmd mkdir -p "$(dirname "$dst")" && run_cmd cp "$src" "$dst"; }
+done
 
 install_zsh
 install_tmux_plugins
@@ -31,8 +54,6 @@ fi
 
 if has stow; then
 	echo "🔗 Linking dotfiles..."
-	prepare_pi_agent
-	prepare_kiro
 	run_cmd stow \
 		--dir="$DOTFILES_DIR" \
 		--target="$HOME" \
@@ -46,9 +67,5 @@ if has ya && [[ -f "$HOME/.config/yazi/package.toml" ]]; then
 	echo "📦 Installing Yazi packages..."
 	run_cmd ya pkg install
 fi
-
-# Register Vicinae script commands (idempotent; skips if Vicinae absent).
-source "$HELPERS_DIR/vicinae.sh"
-link_vicinae_scripts
 
 echo "✅ Common setup complete!"

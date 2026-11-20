@@ -30,10 +30,10 @@ __pycache__
 
 ^/\.ssh/1Password$
 
-# Kiro: link only agent JSON and the two portable settings files
+# Kiro: link only agent JSON and mcp.json. Kiro rewrites cli.json, so install/common.sh copies it.
 ^/\.kiro/(?!agents$|settings$)[^/]+$
 ^/\.kiro/agents/(?![^/]+\.json$)[^/]+$
-^/\.kiro/settings/(?!cli\.json$|mcp\.json$)[^/]+$
+^/\.kiro/settings/(?!mcp\.json$)[^/]+$
 
 # Dotfiles installation files
 ^/install$

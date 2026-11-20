@@ -1,0 +1,44 @@
+[
+  {
+    "id": "sct_shottr_area",
+    "name": "Shottr Area",
+    "icon": "icon://bundle//Applications/Shottr.app",
+    "url": "shottr://grab/area",
+    "app": "default"
+  },
+  {
+    "id": "sct_shottr_ocr",
+    "name": "Shottr OCR",
+    "icon": "icon://bundle//Applications/Shottr.app",
+    "url": "shottr://ocr",
+    "app": "default"
+  },
+  {
+    "id": "sct_shottr_window",
+    "name": "Shottr Window",
+    "icon": "icon://bundle//Applications/Shottr.app",
+    "url": "shottr://grab/window",
+    "app": "default"
+  },
+  {
+    "id": "sct_shottr_fullscreen",
+    "name": "Shottr Fullscreen",
+    "icon": "icon://bundle//Applications/Shottr.app",
+    "url": "shottr://grab/fullscreen",
+    "app": "default"
+  },
+  {
+    "id": "sct_shottr_scrolling",
+    "name": "Shottr Scrolling",
+    "icon": "icon://bundle//Applications/Shottr.app",
+    "url": "shottr://grab/scrolling",
+    "app": "default"
+  },
+  {
+    "id": "sct_screen_record",
+    "name": "Screen Record",
+    "icon": "icon://bundle//System/Applications/Utilities/Screenshot.app",
+    "url": "/System/Applications/Utilities/Screenshot.app",
+    "app": "default"
+  }
+]
